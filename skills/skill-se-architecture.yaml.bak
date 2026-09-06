@@ -1,0 +1,86 @@
+﻿apiVersion: harness.io/v1
+kind: aiSkill
+metadata:
+  name: skill-se-architecture
+  identifier: skill-se-architecture
+  description: 系統邊界判斷（C4 Context層）｜基於業務模型劃定In/Out of Scope、外部系統、Actor、外部依賴與集成合約輪廓
+  tags:
+    - software-engineering
+    - se-workflow
+spec:
+  version: 0.1.0
+  skillDefinition:
+    meta:
+      id: skill-se-architecture
+      name: 系統邊界判斷（C4 Context層）
+      description: 基於業務模型劃定In/Out of Scope、外部系統、Actor、外部依賴與集成合約輪廓
+      version: 0.1.0
+      depends_on: [skill-se-business-model]
+      output_artifact_type: system_boundary_spec
+    input_schema:
+      type: object
+      properties:
+        project_context:
+          type: object
+        user_input:
+          type: string
+        previous_artifacts:
+          type: array
+      required: [project_context]
+    core_prompt: |
+      【Skill ID: skill-se-system-boundary｜職責:系統邊界判斷（C4 Context層）】
+      任務目標:基於業務模型，劃定本系統範圍、內部/外部系統、人角色、in-scope / out-of-scope，定義外部依賴與集成合約輪廓。
+
+      輸入參考:ProjectContext、skill-se-business-model業務模型、需求Artifact。
+
+      執行步驟:
+      1. 繪製C4 Model Context層邏輯描述:本系統、外部系統、人Actor。
+      2. 區分 In-Scope（本系統負責）與 Out-of-Scope（不屬於本系統），明確寫出排除項目。
+      3. 列舉全部外部依賴:第三方API、外部資料庫、舊系統、第三方SaaS、外部人工流程。
+      4. 定義外部互動:誰和本系統交換什麼資訊、觸發方向。
+      5. 評估外部依賴風險:可用性、SLA、合約、資料存取權限、版本變更風險。
+      6. 標記模糊邊界:分不清是否屬於本系統的項目，放入unresolved_questions請業務/產品確認。
+
+      輸出Artifact結構:
+      {
+        "c4_context_description": string,
+        "actors": [{"name":string,"type":"human|external-system","interaction":string}],
+        "in_scope": [string],
+        "out_of_scope": [string],
+        "external_dependencies": [{"name":string,"type":string,"interaction_data":string,"sla_known":bool}],
+        "unresolved_questions": [{"question":string}],
+        "risk_list": [{"risk_desc":string,"level":"Critical|High|Medium|Low","impact":string,"mitigation":string}],
+        "quality_score": number
+      }
+
+      驗收自檢守則:
+      - Out-of-Scope清單明確；
+      - 所有外部依賴清點完畢；
+      - 不存在「邊界模糊但未標記」的核心功能。
+
+      禁止行為:
+      - 不做模組內部拆解、技術選型；邊界只處理系統與外部的切分。
+    acceptance_criteria:
+      - Out-of-Scope清單明確可讀
+      - 全部外部依賴清點完成
+      - 核心功能邊界模糊項目全部標記為待澄清
+      - quality_score >=70
+    output_schema:
+      type: object
+      properties:
+        artifact:
+          type: object
+        unresolved_questions:
+          type: array
+        risk_list:
+          type: array
+        quality_score:
+          type: number
+          minimum: 0
+          maximum: 100
+      required: [artifact, unresolved_questions, risk_list, quality_score]
+    error_handler:
+      retry_strategy: 1
+      fallback_action: mark_human_review
+
+

@@ -1,0 +1,215 @@
+﻿apiVersion: harness.io/v1
+kind: aiSkill
+metadata:
+  name: skill-se-tech-design
+  identifier: skill_se_tech_design
+  description: 技術方案設計 & ADR｜依業務模型與系統邊界產生C4 Container架構、模組拆分、技術選型、ADR決策記錄、非功能需求；識別技術設計阻斷問題供Gate審查
+  tags:
+    - software-engineering
+    - se-workflow
+spec:
+  version: 0.2.0
+  skillDefinition:
+    meta:
+      id: skill-se-tech-design
+      name: 技術方案設計 & ADR
+      description: 接收業務模型、系統邊界與上游架構Artifact，產生C4 Container層架構、模組拆分、介面定義、技術選型與ADR決策記錄，定義可衡量非功能需求；技術詳設階段主Skill，識別技術設計阻斷問題，輸出tech_design_spec供後續Stage與Gate閘門判斷
+      version: 0.2.0
+      depends_on:
+        - skill-se-architecture
+        - skill-se-business-model
+        - skill-se-system-boundary
+      output_artifact_type: tech_design_spec
+      cross_cutting: false
+    input_schema:
+      type: object
+      properties:
+        project_context:
+          type: object
+          description: Harness全域ProjectContext，包含組織技術標準、雲平台限制、合規、預算與安全強制約束
+        user_input:
+          type: string
+          description: 技術設計補充約束、技術偏好、人工澄清資訊
+        previous_artifacts:
+          type: array
+          description: 前置Stage產物，包含architecture_spec、business_model、system_boundary、需求/安全/成本Artifact
+      required: [project_context, previous_artifacts]
+    core_prompt: |
+【Skill ID: skill-se-tech-design｜職責:技術方案設計 & ADR｜主Skill】
+  任務目標:依據業務模型、系統邊界、系統架構Artifact，產生C4 Container層描述、模組拆分、模組介面、技術選型，使用ADR記錄重大技術決策（候選方案、被拒方案、決策後果），定義可衡量非功能需求；識別技術設計層阻斷缺陷，輸出固定結構JSON。
+  輸入參考:ProjectContext、系統架構Artifact、業務模型Artifact、系統邊界Artifact、需求/安全/成本Artifact、人工補充約束。
+
+  執行步驟:
+  1. 依業務負載、可用性、擴展性、安全與預算約束，撰寫C4 Container層架構描述，明確容器之間資料流。
+  2. 執行模組拆分，定義每個模組職責、暴露介面；確保業務功能可映射至對應模組。
+  3. 技術選型並生成ADR:每一項重大技術決策需列出候選方案、被拒選項、決策理由與決策帶來的風險/後果。
+  4. 定義可衡量非功能需求:吞吐量、延遲、可用性、容錯、擴展性。
+  5. 識別技術設計風險:單點故障、擴展瓶頸、技術鎖定、維運複雜度、成本溢出、安全控制缺失。
+  6. 識別技術設計阻斷問題blocking_tech_design_issues:無法滿足強制NFR、無法落實前置安全控制、方案超出預算、存在無法緩解Critical缺陷；僅Critical/High納入阻斷陣列。
+  7. 收集技術假設與待澄清項目放入unresolved_questions，標註target_stakeholder。
+  8. 輸出完整risk_list，分級Critical|High|Medium|Low，每筆風險包含描述、影響、緩解方案。
+
+## 強制輸出規則
+  1. 僅回傳單一純JSON，禁止前言、額外解釋、markdown、```json程式碼標籤、JSON註解。
+  2. 嚴格遵守下面Artifact結構，欄名不可修改，不可隨意增減頂層欄位。
+  3. quality_score 評分規則（0~100數值，供Gate閘門使用）
+    - 80~100:C4 Container架構完整；模組職責與介面清晰；重大決策全部有ADR；NFR具可衡量指標；無Critical/High技術設計阻斷問題；僅少量Medium/Low風險
+    - 70~79:核心技術方案完整；ADR覆蓋重大決策；NFR目標明確；存在少量待驗證假設，**無技術設計阻斷問題**，滿足Gate放行門檻
+    - 60~69:核心功能方案可行，但部分NFR或安全控制存在缺口；存在High技術風險但有緩解方案；無Critical阻斷項
+    - 0~59:存在Critical/High技術設計阻斷缺陷、無法滿足強制NFR、安全合規無法落地、方案嚴重超出預算；Gate會攔截進入人工審批
+  4. blocking_tech_design_issues:僅放入Critical/High等級技術設計缺陷，觸發Gate阻斷。Medium/Low風險放至risk_list，不列入阻斷陣列。
+  5. unresolved_questions:收集架構師/資安/PM/開發需澄清的技術疑點，標註target_stakeholder。
+  6. risk_list:包含全部技術設計風險，level只能使用四個允許字串Critical|High|Medium|Low；每筆風險必須包含描述、影響、緩解方案。
+
+## 輸出Artifact結構
+{
+  "c4_container_description": string,
+  "modules": [{"module_name":string,"responsibility":string,"interfaces":[string]}],
+  "adr_list": [{"adr_id":string,"title":string,"context":string,"candidates":[string],"rejected_options":[string],"decision":string,"consequences":string}],
+  "non_functional_requirements": [{"name":string,"target":string}],
+  "blocking_tech_design_issues": [{"issue_id":string,"severity":"Critical|High","desc":string}],
+  "unresolved_questions": [{"question":string,"target_stakeholder":string}],
+  "risk_list": [{"risk_desc":string,"level":"Critical|High|Medium|Low","impact":string,"mitigation":string}],
+  "quality_score": number
+}
+
+驗收自檢守則:
+- 每個重大技術決策都有ADR，並記錄候選與被拒方案；
+- 每個業務功能可映射到對應模組；
+- 非功能需求有明確、可衡量目標值；
+- Critical/High技術設計缺陷登記至blocking_tech_design_issues，作為Gate阻斷依據。
+
+禁止行為:
+- 不設計細節資料表欄位（交由資料狀態設計Skill）；
+- 不產生完整程式碼（交由代碼實作Skill）；
+- 不變更上游系統架構已定義的系統邊界；
+- 禁止輸出JSON以外的任何文字。
+    acceptance_criteria:
+      - C4 Container描述完整，模組職責與介面定義清晰
+      - 重大技術決策全部擁有ADR，包含候選與被拒方案
+      - 業務功能可映射至對應模組
+      - 非功能需求具備可衡量目標
+      - blocking_tech_design_issues內severity僅可使用 Critical|High
+      - risk_list內風險等級僅使用 Critical|High|Medium|Low
+      - unresolved_questions 指定target_stakeholder
+      - quality_score為0~100數字；quality_score >=70 且 blocking_tech_design_issues陣列為空才可通過Stage Gate
+    output_schema:
+      type: object
+      required:
+        - artifact
+        - unresolved_questions
+        - risk_list
+        - quality_score
+      properties:
+        artifact:
+          type: object
+          description: 主技術方案設計產物，結構固定
+          properties:
+            c4_container_description:
+              type: string
+            modules:
+              type: array
+              items:
+                type: object
+                required: [module_name, responsibility, interfaces]
+                properties:
+                  module_name:
+                    type: string
+                  responsibility:
+                    type: string
+                  interfaces:
+                    type: array
+                    items:
+                      type: string
+            adr_list:
+              type: array
+              items:
+                type: object
+                required: [adr_id, title, context, candidates, rejected_options, decision, consequences]
+                properties:
+                  adr_id:
+                    type: string
+                  title:
+                    type: string
+                  context:
+                    type: string
+                  candidates:
+                    type: array
+                    items:
+                      type: string
+                  rejected_options:
+                    type: array
+                    items:
+                      type: string
+                  decision:
+                    type: string
+                  consequences:
+                    type: string
+            non_functional_requirements:
+              type: array
+              items:
+                type: object
+                required: [name, target]
+                properties:
+                  name:
+                    type: string
+                  target:
+                    type: string
+            blocking_tech_design_issues:
+              type: array
+              items:
+                type: object
+                required: [issue_id, severity, desc]
+                properties:
+                  issue_id:
+                    type: string
+                  severity:
+                    type: string
+                    enum: ["Critical", "High"]
+                  desc:
+                    type: string
+            unresolved_questions:
+              type: array
+              items:
+                type: object
+                required: [question, target_stakeholder]
+                properties:
+                  question:
+                    type: string
+                  target_stakeholder:
+                    type: string
+            risk_list:
+              type: array
+              items:
+                type: object
+                required: [risk_desc, level, impact, mitigation]
+                properties:
+                  risk_desc:
+                    type: string
+                  level:
+                    type: string
+                    enum: ["Critical", "High", "Medium", "Low"]
+                  impact:
+                    type: string
+                  mitigation:
+                    type: string
+            quality_score:
+              type: number
+              minimum: 0
+              maximum: 100
+        unresolved_questions:
+          type: array
+          description: 直通Gate的技術設計待澄清清單，與artifact內的unresolved_questions保持一致
+        risk_list:
+          type: array
+          description: 直通Gate的技術設計風險清單，與artifact內risk_list保持一致
+        quality_score:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: 技術設計完整度分數，Gate閘門判斷依據
+    error_handler:
+      retry_strategy: 1
+      max_retry_count: 3
+      fallback_action: mark_human_review
+      retry_prompt: "你的輸出JSON不符合schema，請重新產出嚴格符合schema的純JSON，不要任何額外文字、Markdown與註解"

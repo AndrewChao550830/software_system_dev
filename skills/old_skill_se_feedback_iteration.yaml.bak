@@ -1,0 +1,235 @@
+﻿apiVersion: harness.io/v1
+kind: aiSkill
+metadata:
+  name: skill-se-feedback-iteration
+  identifier: skill_se_feedback_iteration
+  description: 回饋與迭代｜用戶回饋收集、缺陷閉環、價值驗證、迭代規劃、優先級排序；識別迭代階段阻斷問題供Gate審查
+  tags:
+    - software-engineering
+    - se-workflow
+spec:
+  version: 0.2.0
+  skillDefinition:
+    meta:
+      id: skill-se-feedback-iteration
+      name: 回饋與迭代
+      description: 接收可觀測性Artifact，收集用戶回饋、生產缺陷、業務指標資料，執行價值驗證，排定產品迭代待辦與優先級；迭代閉環Skill，識別迭代層阻斷缺陷，輸出iteration_spec，可回流至需求階段
+      version: 0.2.0
+      depends_on:
+        - skill_se_observability
+      output_artifact_type: iteration_spec
+      cross_cutting: false
+    input_schema:
+      type: object
+      properties:
+        project_context:
+          type: object
+          description: Harness全域ProjectContext，包含回饋渠道、缺陷管理系統、迭代週期、優先級模型、產品路線圖
+        user_input:
+          type: string
+          description: 迭代補充約束、回饋來源、迭代週期偏好、人工澄清資訊
+        previous_artifacts:
+          type: array
+          description: 前置Stage產物，包含observability_spec
+      required: [project_context, previous_artifacts]
+    core_prompt: |
+【Skill ID: skill-se-feedback-iteration｜職責:回饋與迭代｜主Skill】
+任務目標:基於可觀測性工件與生產資料，收集多源回饋、驗證產品業務價值、管理缺陷閉環、建立迭代待辦清單與優先排序，並支持回流更新需求工件；識別迭代階段阻斷缺陷，輸出固定結構JSON。
+輸入參考:ProjectContext、可觀測性Artifact、人工補充約束。
+
+執行步驟:
+1. 定義回饋來源與收集機制:用戶反饋、告警事件、客服單、生產缺陷、業務指標。
+2. 執行價值驗證:對照原始業務目標，評估本版本是否達成預期價值。
+3. 缺陷分類與閉環流程:分類、指派、修復驗證、歸根分析。
+4. 萃取新需求/改進點，使用優先級模型排序。
+5. 規劃下一個迭代的範圍、交付目標、里程碑。
+6. 建立回流機制:將高優先項目回寫至需求Artifact，重新觸發Pipeline。
+7. 識別迭代風險:回饋品質差、優先級衝突、缺陷堆積、價值目標無法衡量。
+8. 識別迭代阻斷問題blocking_iter_issues:無效回饋收集渠道、重大缺陷無閉環流程、無法驗證業務價值；僅Critical/High納入阻斷陣列。
+9. 收集迭代階段待澄清項目放入unresolved_questions，標註target_stakeholder。
+10. 輸出完整risk_list，分級Critical|High|Medium|Low，每筆風險包含描述、影響、緩解方案。
+
+## 強制輸出規則
+1. 僅回傳單一純JSON，禁止前言、額外解釋、markdown、```json程式碼標籤、JSON註解。
+2. 嚴格遵守下面Artifact結構，欄名不可修改，不可隨意增減頂層欄位。
+3. quality_score 評分規則（0~100數值，供Gate閘門使用）
+   - 80~100:回饋渠道完整；價值驗證方法清晰；缺陷閉環與迭代排程完備；無Critical/High迭代阻斷問題；僅少量Medium/Low風險
+   - 70~79:核心回饋與重大缺陷閉環機制齊全；價值可驗證；少量優先級假設待驗證，**無迭代阻斷問題**，滿足Gate放行門檻
+   - 60~69:主迭代流程可用，但次要回饋來源缺失；存在High迭代風險但有補救方案；無Critical阻斷項
+   - 0~59:存在Critical/High迭代阻斷缺陷、重大缺陷無閉環機制、無法衡量業務價值；Gate會攔截進入人工審批
+4. blocking_iter_issues:僅放入Critical/High等級迭代層缺陷，觸發Gate阻斷。Medium/Low風險放至risk_list，不列入阻斷陣列。
+5. unresolved_questions:產品/開發/客服需澄清的迭代疑點，標註target_stakeholder。
+6. risk_list:包含全部迭代階段風險，level只能使用四個允許字串Critical|High|Medium|Low；每筆風險必須包含描述、影響、緩解方案。
+
+## 輸出Artifact結構
+{
+  "feedback_channels": [{"channel_id":string,"source":string,"collection_method":string}],
+  "value_validation": {"original_goals":[string],"measurement_method":string,"result":string},
+  "defect_lifecycle": {"triage_rules":[string],"closeout_steps":[string],"blameless_postmortem":string},
+  "backlog_items": [{"item_id":string,"title":string,"priority":"Critical|High|Medium|Low","rationale":string}],
+  "next_iteration": {"scope":[string],"milestones":[string],"cycle_length":string},
+  "feedback_loop": {"backflow_artifact":string,"trigger_condition":string},
+  "blocking_iter_issues": [{"issue_id":string,"severity":"Critical|High","desc":string}],
+  "unresolved_questions": [{"question":string,"target_stakeholder":string}],
+  "risk_list": [{"risk_desc":string,"level":"Critical|High|Medium|Low","impact":string,"mitigation":string}],
+  "quality_score": number
+}
+
+驗收自檢守則:
+- 多源回饋渠道定義完整；
+- 版本價值可對照原始目標驗證；
+- Critical/High缺陷具備分類與閉環流程；
+- Critical/High迭代缺陷登記至blocking_iter_issues，作為Gate阻斷依據。
+
+禁止行為:
+- 不直接執行迭代開發，只產生回饋收集、缺陷閉環與迭代規劃；
+- 禁止輸出JSON以外的任何文字。
+    acceptance_criteria:
+      - 多源回饋收集渠道完整
+      - 業務價值可衡量、可對照原始目標驗證
+      - Critical/High缺陷具備分類與閉環流程
+      - blocking_iter_issues內severity僅可使用 Critical|High
+      - risk_list內風險等級僅使用 Critical|High|Medium|Low
+      - unresolved_questions 指定target_stakeholder
+      - quality_score為0~100數字；quality_score >=70 且 blocking_iter_issues陣列為空才可通過Stage Gate
+    output_schema:
+      type: object
+      required:
+        - artifact
+        - unresolved_questions
+        - risk_list
+        - quality_score
+      properties:
+        artifact:
+          type: object
+          description: 主回饋迭代產物，結構固定
+          properties:
+            feedback_channels:
+              type: array
+              items:
+                type: object
+                required: [channel_id, source, collection_method]
+                properties:
+                  channel_id:
+                    type: string
+                  source:
+                    type: string
+                  collection_method:
+                    type: string
+            value_validation:
+              type: object
+              properties:
+                original_goals:
+                  type: array
+                  items:
+                    type: string
+                measurement_method:
+                  type: string
+                result:
+                  type: string
+            defect_lifecycle:
+              type: object
+              properties:
+                triage_rules:
+                  type: array
+                  items:
+                    type: string
+                closeout_steps:
+                  type: array
+                  items:
+                    type: string
+                blameless_postmortem:
+                  type: string
+            backlog_items:
+              type: array
+              items:
+                type: object
+                required: [item_id, title, priority, rationale]
+                properties:
+                  item_id:
+                    type: string
+                  title:
+                    type: string
+                  priority:
+                    type: string
+                    enum: ["Critical", "High", "Medium", "Low"]
+                  rationale:
+                    type: string
+            next_iteration:
+              type: object
+              properties:
+                scope:
+                  type: array
+                  items:
+                    type: string
+                milestones:
+                  type: array
+                  items:
+                    type: string
+                cycle_length:
+                  type: string
+            feedback_loop:
+              type: object
+              properties:
+                backflow_artifact:
+                  type: string
+                trigger_condition:
+                  type: string
+            blocking_iter_issues:
+              type: array
+              items:
+                type: object
+                required: [issue_id, severity, desc]
+                properties:
+                  issue_id:
+                    type: string
+                  severity:
+                    type: string
+                    enum: ["Critical", "High"]
+                  desc:
+                    type: string
+            unresolved_questions:
+              type: array
+              items:
+                type: object
+                required: [question, target_stakeholder]
+                properties:
+                  question:
+                    type: string
+                  target_stakeholder:
+                    type: string
+            risk_list:
+              type: array
+              items:
+                type: object
+                required: [risk_desc, level, impact, mitigation]
+                properties:
+                  risk_desc:
+                    type: string
+                  level:
+                    type: string
+                    enum: ["Critical", "High", "Medium", "Low"]
+                  impact:
+                    type: string
+                  mitigation:
+                    type: string
+            quality_score:
+              type: number
+              minimum: 0
+              maximum: 100
+        unresolved_questions:
+          type: array
+          description: 直通Gate的迭代階段待澄清清單，與artifact內的unresolved_questions保持一致
+        risk_list:
+          type: array
+          description: 直通Gate的迭代階段風險清單，與artifact內risk_list保持一致
+        quality_score:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: 迭代方案完整度分數，Gate閘門判斷依據
+    error_handler:
+      retry_strategy: 1
+      max_retry_count: 3
+      fallback_action: mark_human_review
+      retry_prompt: "你的輸出JSON不符合schema，請重新產出嚴格符合schema的純JSON，不要任何額外文字、Markdown與註解"

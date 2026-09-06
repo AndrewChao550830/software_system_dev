@@ -1,0 +1,203 @@
+apiVersion: harness.io/v1
+kind: aiSkill
+metadata:
+  name: skill_se_requirement
+  identifier: skill_se_requirement
+  description: 需求理解｜從業務需求說明、利害關係人輸入開始解析需求、MoSCoW優先級劃分、User Story辨識及衝突/模糊點
+  tags:
+    - software-engineering
+    - se-workflow
+spec:
+  version: 0.2.0
+  skillDefinition:
+    meta:
+      id: skill_se_requirement
+      name: 需求理解
+      description: 從業務需求說明、利害關係人輸入開始解析需求、MoSCoW優先級劃分、User Story辨識及衝突/模糊點，輸出需求規格Artifact，提供質量評估供Gate判斷
+      version: 0.2.0
+      depends_on: []
+      output_artifact_type: requirement_spec
+    input_schema:
+      type: object
+      properties:
+        project_context:
+          type: object
+          description: Harness ProjectContext，包含組織基本資訊、預算、時程、組織結構
+        user_input:
+          type: string
+          description: 需求說明、人工補充資訊、利害關係人清單
+        previous_artifacts:
+          type: array
+          description: 前置Stage產物；需求理解段開始執行時為空陣列
+      required: [project_context, user_input]
+    core_prompt: |
+      【Skill ID: skill-se-requirement｜職責:需求理解｜需求分析產出任務】
+      任務目標:從業務需求說明、利害關係人輸入，驗證需求完整性、MoSCoW優先級劃分（Must/Should/Could/Won't），辨識隱式需求、需求衝突、模糊點，產出User Story相關需求風險列表，輸出需求規格結構JSON。
+
+      輸入參考:ProjectContext、業務需求說明、利害關係人清單、業務目標、人工補充資訊。
+
+      執行步驟:
+      1. 識別全部利害關係人並自述，發掘需求衝突並優先排序。
+      2. 深入理解業務目標，嚴格區分「業務目標」與「系統需求」。
+      3. 解讀需求說明應用MoSCoW原則（Must / Should / Could / Won't）。
+      4. 寫出 User Story，格式為「As <角色>, I want <功能>, so that <價值>」；所有Must層Story必須具體可驗證的接受標準(AC)。
+      5. 辨識隱式需求設定並確認；verified:true（已驗證）/ verified:false（未驗證）。
+      6. 標記需求模糊、需求補充、需求測試、義務需求清單目標，放入conflict_list與unresolved_questions。
+      7. 評估需求階段風險：需求完整性、需求頻繁變更、利害關係人理解不足、法規規範缺失風險；風險級別選擇:Critical|High|Medium|Low，詳細風險描述、影響、緩解方案。
+      8. 輸出 unresolved_questions：需要人工澄清待確認事項並標註詢問對象target_stakeholder。
+
+      ## 強制輸出規則
+      1. 僅回傳單一純JSON，禁止前言、額外解釋、markdown、```json程式碼標籤、JSON註解。
+      2. 嚴格遵守下面Artifact結構，欄名不可修改，不可隨意增減頂層欄位。
+      3. quality_score 評分規則（0~100數值，供Gate閘門使用）
+         - 80~100:業務目標完整；利害關係人清單齊全；MoSCoW劃分確確；無需求衝突；隱式需求已驗證；無Critical/High風險
+         - 70~79:核心需求定義完備；次要需求確認；少量假設待驗證；Critical/High風險具緩解方案；滿足Gate放行門檻
+         - 60~69:主要需求定義可用，但多個未決議題存在；關鍵設定尚未驗證；High風險但有緩解方案；無Critical阻斷項
+         - 0~59:存在需求模糊、大量未決議題、存在大量衝突；Critical等風險無緩解方案；Gate會攔截進入人工審批
+      4. moskow_backlog：故事點用標準User Story表示。
+      5. unresolved_questions:收集需要人工澄清獲得確認資訊，並標註該詢問對象target_stakeholder。
+      6. assumptions:假設內容設定；verified=true表示已確認，false表示尚未驗證。
+      7. conflict_list:需求衝突目錄，寫清衝突描述及影響。
+      8. risk_list:需求階段風險等級能使用個別允許字串Critical|High|Medium|Low；必須寫楚impact與mitigation緩解方案。
+      9. stakeholders:全部相關利害關係人，包含名稱、角色、系統需求待求。
+
+      ## 輸出Artifact結構
+      {
+        "business_goal": string,
+        "stakeholders": [{"name":string,"role":string,"expectation":string}],
+        "moskow_backlog": {"must":[string], "should":[string], "could":[string], "wont":[string]},
+        "assumptions": [{"content":string,"verified":boolean}],
+        "conflict_list": [{"conflict_desc":string,"impact":string}],
+        "unresolved_questions": [{"question":string,"target_stakeholder":string}],
+        "risk_list": [{"risk_desc":string,"level":"Critical|High|Medium|Low","impact":string,"mitigation":string}],
+        "quality_score": number
+      }
+
+      驗收自檢守則:
+      - 每個Must需求都寫出可驗證AC
+      - 隱式需求設被確認
+      - 需求衝突全部記錄
+
+      禁止行為:
+      - 不做技術方案、資料庫設計或系統架構；需求層禁止解決方案
+      - 不做利害關係人自決掩蓋需求衝突
+      - 禁止輸出JSON以外的任何文字
+    acceptance_criteria:
+      - 輸出artifact完全符合JSON結構，無層級位置缺失
+      - 必須要的Must User Story含驗證接口AC
+      - 所有業務假設已登記註註是否已確認
+      - 需求衝突存在且明確
+      - Must需求存在測試模糊度
+      - risk_list風險等級使用 Critical|High|Medium|Low
+      - quality_score為0~100數字；quality_score >= 70可通過Stage Gate
+    output_schema:
+      type: object
+      required:
+        - artifact
+        - unresolved_questions
+        - risk_list
+        - quality_score
+      properties:
+        artifact:
+          type: object
+          description: 主需求產物結構
+          properties:
+            business_goal:
+              type: string
+            stakeholders:
+              type: array
+              items:
+                type: object
+                required: [name, role, expectation]
+                properties:
+                  name:
+                    type: string
+                  role:
+                    type: string
+                  expectation:
+                    type: string
+            moskow_backlog:
+              type: object
+              required: [must, should, could, wont]
+              properties:
+                must:
+                  type: array
+                  items:
+                    type: string
+                should:
+                  type: array
+                  items:
+                    type: string
+                could:
+                  type: array
+                  items:
+                    type: string
+                wont:
+                  type: array
+                  items:
+                    type: string
+            assumptions:
+              type: array
+              items:
+                type: object
+                required: [content, verified]
+                properties:
+                  content:
+                    type: string
+                  verified:
+                    type: boolean
+            conflict_list:
+              type: array
+              items:
+                type: object
+                required: [conflict_desc, impact]
+                properties:
+                  conflict_desc:
+                    type: string
+                  impact:
+                    type: string
+            unresolved_questions:
+              type: array
+              items:
+                type: object
+                required: [question, target_stakeholder]
+                properties:
+                  question:
+                    type: string
+                  target_stakeholder:
+                    type: string
+            risk_list:
+              type: array
+              items:
+                type: object
+                required: [risk_desc, level, impact, mitigation]
+                properties:
+                  risk_desc:
+                    type: string
+                  level:
+                    type: string
+                    enum: ["Critical", "High", "Medium", "Low"]
+                  impact:
+                    type: string
+                  mitigation:
+                    type: string
+            quality_score:
+              type: number
+              minimum: 0
+              maximum: 100
+        unresolved_questions:
+          type: array
+          description: 直通Gate的未決議題清單，與artifact內的unresolved_questions保持一致
+        risk_list:
+          type: array
+          description: 直通Gate的需求階段風險清單，與artifact內risk_list保持一致
+        quality_score:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: 需求完整度分數，Gate閘門判斷依據
+    error_handler:
+      retry_strategy: 1
+      max_retry_count: 3
+      fallback_action: mark_human_review
+      retry_prompt: "你的輸出JSON不符合schema，請重新產出嚴格符合schema的純JSON，不要任何額外文字、Markdown與註解"

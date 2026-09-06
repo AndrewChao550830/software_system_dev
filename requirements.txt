@@ -1,0 +1,12 @@
+fastapi>=0.100.0
+uvicorn[standard]>=0.20.0
+sqlalchemy>=2.0.0
+pydantic>=2.0.0
+pdfplumber>=0.7.0
+openpyxl>=3.0.0
+pyyaml>=6.0
+pydantic>=2.5
+openai>=1.0
+python-dotenv>=1.0
+# sqlite3 是 Python 內建標準函式庫，不可也不需以 pip 安裝，故移除。
+jsonlines

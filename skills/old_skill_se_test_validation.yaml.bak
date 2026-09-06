@@ -1,0 +1,237 @@
+﻿apiVersion: harness.io/v1
+kind: aiSkill
+metadata:
+  name: skill-se-test-validation
+  identifier: skill_se_test_validation
+  description: 測試驗證｜設計單元/整合/E2E測試案例、覆蓋度目標、缺陷分類；識別測試層阻斷問題供Gate審查
+  tags:
+    - software-engineering
+    - se-workflow
+spec:
+  version: 0.2.0
+  skillDefinition:
+    meta:
+      id: skill-se-test-validation
+      name: 測試驗證
+      description: 接收需求、代碼實作Artifact，設計分層測試（單元/整合/E2E）案例、覆蓋度目標、缺陷分類與測試報告結構；測試驗證階段主Skill，識別測試層阻斷缺陷，輸出test_spec供後續Stage與Gate閘門判斷
+      version: 0.2.0
+      depends_on:
+        - skill-se-requirement
+        - skill-se-code-implementation
+      output_artifact_type: test_spec
+      cross_cutting: false
+    input_schema:
+      type: object
+      properties:
+        project_context:
+          type: object
+          description: Harness全域ProjectContext，包含測試框架、覆蓋度門檻、缺陷嚴重性定義、測試環境約束
+        user_input:
+          type: string
+          description: 測試設計補充約束、測試框架偏好、重點測試場景、人工澄清資訊
+        previous_artifacts:
+          type: array
+          description: 前置Stage產物，包含code_artifact、需求/資料/技術設計Artifact
+      required: [project_context, previous_artifacts]
+    core_prompt: |
+【Skill ID: skill-se-test-validation｜職責:測試驗證｜主Skill】
+任務目標:基於需求、業務規則、代碼實作Artifact，設計分層測試（單元、整合、E2E場景測試），生成測試案例、前置條件、步驟與預期結果；執行缺陷分類，設定測試覆蓋度目標，輸出測試報告結構；識別測試層阻斷缺陷，輸出固定結構JSON。
+輸入參考:ProjectContext、需求Artifact、業務模型、資料狀態設計、程式碼Artifact、人工補充約束。
+
+執行步驟:
+1. 分層設計測試集:單元測試、整合測試、業務場景E2E測試。
+2. 針對Must需求、業務規則、實體狀態轉移撰寫測試案例，包含案例ID、前置條件、執行步驟、預期結果。
+3. 辨識邊界案例、異常輸入、錯誤分支、負面場景。
+4. 設定程式碼覆蓋度目標:行覆蓋、分支覆蓋。
+5. 模擬潛在缺陷，依嚴重度分類，記錄缺陷觸發條件與影響。
+6. 產生標準測試執行報告結構。
+7. 識別測試阻斷問題blocking_test_issues:核心Must需求缺少測試覆蓋、高風險路徑無異常案例、Critical缺陷無驗證方案；僅Critical/High納入阻斷陣列。
+8. 收集測試階段待澄清項目放入unresolved_questions，標註target_stakeholder。
+9. 輸出完整risk_list，分級Critical|High|Medium|Low，每筆風險包含描述、影響、緩解方案。
+
+## 強制輸出規則
+1. 僅回傳單一純JSON，禁止前言、額外解釋、markdown、```json程式碼標籤、JSON註解。
+2. 嚴格遵守下面Artifact結構，欄名不可修改，不可隨意增減頂層欄位。
+3. quality_score 評分規則（0~100數值，供Gate閘門使用）
+   - 80~100:所有Must需求具備對應測試案例；核心路徑、邊界與異常場景完整覆蓋；覆蓋度目標合理；無Critical/High測試阻斷問題；僅少量Medium/Low風險
+   - 70~79:核心需求與主流程測試齊全；關鍵異常場景有覆蓋；少量場景假設待驗證，**無測試阻斷問題**，滿足Gate放行門檻
+   - 60~69:主流程測試可用，但部分次要分支/邊界案例缺失；存在High測試風險但有補測方案；無Critical阻斷項
+   - 0~59:存在Critical/High測試阻斷缺陷、Must需求缺少測試案例、高風險業務路徑完全沒有異常覆蓋；Gate會攔截進入人工審批
+4. blocking_test_issues:僅放入Critical/High等級測試層缺陷，觸發Gate阻斷。Medium/Low風險放至risk_list，不列入阻斷陣列。
+5. unresolved_questions:需要測試/開發/產品澄清的測試設計疑點，標註target_stakeholder。
+6. risk_list:包含全部測試階段風險，level只能使用四個允許字串Critical|High|Medium|Low；每筆風險必須包含描述、影響、緩解方案。
+
+## 輸出Artifact結構
+{
+  "test_suite": {
+    "unit": [{"case_id":string,"precondition":string,"steps":[string],"expected":string}],
+    "integration": [{"case_id":string,"precondition":string,"steps":[string],"expected":string}],
+    "e2e": [{"case_id":string,"precondition":string,"steps":[string],"expected":string}]
+  },
+  "coverage_target": {"line":number,"branch":number},
+  "defect_list": [{"case_id":string,"severity":"Critical|High|Medium|Low","desc":string}],
+  "blocking_test_issues": [{"issue_id":string,"severity":"Critical|High","desc":string}],
+  "unresolved_questions": [{"question":string,"target_stakeholder":string}],
+  "risk_list": [{"risk_desc":string,"level":"Critical|High|Medium|Low","impact":string,"mitigation":string}],
+  "quality_score": number
+}
+
+驗收自檢守則:
+- 所有Must需求都有對應測試案例；
+- 核心路徑與異常場景皆覆蓋；
+- Critical/High缺陷清單完整；
+- Critical/High測試缺陷登記至blocking_test_issues，作為Gate阻斷依據。
+
+禁止行為:
+- 不執行真實CI測試執行；只產生測試案例與報告結構；
+- 不修改上游代碼實作Artifact；
+- 禁止輸出JSON以外的任何文字。
+    acceptance_criteria:
+      - 全部Must需求具備對應測試案例
+      - 核心路徑與異常場景覆蓋
+      - Critical/High缺陷完整登記
+      - blocking_test_issues內severity僅可使用 Critical|High
+      - risk_list內風險等級僅使用 Critical|High|Medium|Low
+      - unresolved_questions 指定target_stakeholder
+      - quality_score為0~100數字；quality_score >=70 且 blocking_test_issues陣列為空才可通過Stage Gate
+    output_schema:
+      type: object
+      required:
+        - artifact
+        - unresolved_questions
+        - risk_list
+        - quality_score
+      properties:
+        artifact:
+          type: object
+          description: 主測試驗證產物，結構固定
+          properties:
+            test_suite:
+              type: object
+              properties:
+                unit:
+                  type: array
+                  items:
+                    type: object
+                    required: [case_id, precondition, steps, expected]
+                    properties:
+                      case_id:
+                        type: string
+                      precondition:
+                        type: string
+                      steps:
+                        type: array
+                        items:
+                          type: string
+                      expected:
+                        type: string
+                integration:
+                  type: array
+                  items:
+                    type: object
+                    required: [case_id, precondition, steps, expected]
+                    properties:
+                      case_id:
+                        type: string
+                      precondition:
+                        type: string
+                      steps:
+                        type: array
+                        items:
+                          type: string
+                      expected:
+                        type: string
+                e2e:
+                  type: array
+                  items:
+                    type: object
+                    required: [case_id, precondition, steps, expected]
+                    properties:
+                      case_id:
+                        type: string
+                      precondition:
+                        type: string
+                      steps:
+                        type: array
+                        items:
+                          type: string
+                      expected:
+                        type: string
+            coverage_target:
+              type: object
+              properties:
+                line:
+                  type: number
+                branch:
+                  type: number
+            defect_list:
+              type: array
+              items:
+                type: object
+                required: [case_id, severity, desc]
+                properties:
+                  case_id:
+                    type: string
+                  severity:
+                    type: string
+                    enum: ["Critical", "High", "Medium", "Low"]
+                  desc:
+                    type: string
+            blocking_test_issues:
+              type: array
+              items:
+                type: object
+                required: [issue_id, severity, desc]
+                properties:
+                  issue_id:
+                    type: string
+                  severity:
+                    type: string
+                    enum: ["Critical", "High"]
+                  desc:
+                    type: string
+            unresolved_questions:
+              type: array
+              items:
+                type: object
+                required: [question, target_stakeholder]
+                properties:
+                  question:
+                    type: string
+                  target_stakeholder:
+                    type: string
+            risk_list:
+              type: array
+              items:
+                type: object
+                required: [risk_desc, level, impact, mitigation]
+                properties:
+                  risk_desc:
+                    type: string
+                  level:
+                    type: string
+                    enum: ["Critical", "High", "Medium", "Low"]
+                  impact:
+                    type: string
+                  mitigation:
+                    type: string
+            quality_score:
+              type: number
+              minimum: 0
+              maximum: 100
+        unresolved_questions:
+          type: array
+          description: 直通Gate的測試設計待澄清清單，與artifact內的unresolved_questions保持一致
+        risk_list:
+          type: array
+          description: 直通Gate的測試階段風險清單，與artifact內risk_list保持一致
+        quality_score:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: 測試驗證完整度分數，Gate閘門判斷依據
+    error_handler:
+      retry_strategy: 1
+      max_retry_count: 3
+      fallback_action: mark_human_review
+      retry_prompt: "你的輸出JSON不符合schema，請重新產出嚴格符合schema的純JSON，不要任何額外文字、Markdown與註解"

@@ -1,0 +1,248 @@
+﻿apiVersion: harness.io/v1
+kind: aiSkill
+metadata:
+  name: skill-se-data-state-design
+  identifier: skill_se_data_state_design
+  description: 資料結構與狀態設計｜邏輯ER、狀態機、資料字典、資料生命週期、遷移與回滾計畫；識別資料層阻斷問題供Gate審查
+  tags:
+    - software-engineering
+    - se-workflow
+spec:
+  version: 0.2.0
+  skillDefinition:
+    meta:
+      id: skill-se-data-state-design
+      name: 資料結構與狀態設計
+      description: 接收業務模型、技術方案Artifact，產生邏輯ER、實體結構、狀態機、資料字典、資料生命週期、資料遷移與回滾計畫；資料設計階段主Skill，識別資料層阻斷缺陷，輸出data_state_spec供後續Stage與Gate閘門判斷
+      version: 0.2.0
+      depends_on:
+        - skill-se-business-model
+        - skill-se-tech-design
+      output_artifact_type: data_state_spec
+      cross_cutting: false
+    input_schema:
+      type: object
+      properties:
+        project_context:
+          type: object
+          description: Harness全域ProjectContext，包含資料庫平台、資料保護/合規規則、資料保留政策、備份要求
+        user_input:
+          type: string
+          description: 資料設計補充約束、資料庫偏好、資料安全要求、人工澄清資訊
+        previous_artifacts:
+          type: array
+          description: 前置Stage產物，包含tech_design_spec、business_model、上游需求/安全/架構Artifact
+      required: [project_context, previous_artifacts]
+    core_prompt: |
+【Skill ID: skill-se-data-state-design｜職責:資料結構與狀態設計｜主Skill】
+任務目標:基於領域業務模型與技術方案Artifact，設計邏輯層實體資料結構、狀態機、資料字典、資料生命週期、資料遷移策略，定義合法狀態轉移與業務約束；識別資料層阻斷缺陷，輸出固定結構JSON。
+輸入參考:ProjectContext、業務模型Artifact、技術方案Artifact、需求與安全Artifact、人工補充約束。
+
+執行步驟:
+1. 設計邏輯ER:實體、屬性、資料型別、主鍵、唯一約束、關聯關係，僅邏輯層，不生成實體建表SQL。
+2. 識別有狀態業務實體，定義狀態機:全部合法狀態、觸發事件、允許轉移、守衛條件、攔截非法狀態跳轉。
+3. 建置完整資料字典:欄位全名、定義、資料類型、可空性、預設值與業務含義。
+4. 定義資料生命週期:建立、更新、封存、刪除，以及資料保留期限與銷毀規則，符合合規要求。
+5. 設計版本化資料遷移計畫，配套對應回滾方案。
+6. 識別資料層風險:資料不一致、並發競爭、資料膨脹、備份恢復失效、資料洩露風險。
+7. 識別資料設計阻斷問題blocking_data_issues:無法滿足資料合規、狀態機存在未處理非法轉移、資料模型與業務模型嚴重衝突、存在無法緩解Critical資料風險；僅Critical/High納入阻斷陣列。
+8. 收集資料設計待澄清項目放入unresolved_questions，標註target_stakeholder。
+9. 輸出完整risk_list，分級Critical|High|Medium|Low，每筆風險包含描述、影響、緩解方案。
+
+## 強制輸出規則
+1. 僅回傳單一純JSON，禁止前言、額外解釋、markdown、```json程式碼標籤、JSON註解。
+2. 嚴格遵守下面Artifact結構，欄名不可修改，不可隨意增減頂層欄位。
+3. quality_score 評分規則（0~100數值，供Gate閘門使用）
+   - 80~100:邏輯ER完整；狀態機全部轉移定義完備；資料字典齊全；遷移回滾方案完整；無Critical/High資料阻斷問題；僅少量Medium/Low風險
+   - 70~79:核心實體與狀態轉移定義完備；資料生命週期與遷移策略齊全；少量假設待驗證，**無資料設計阻斷問題**，滿足Gate放行門檻
+   - 60~69:核心業務實體模型可用，但部分邊界狀態或合規約束存在缺口；存在High資料風險但有緩解方案；無Critical阻斷項
+   - 0~59:存在Critical/High資料阻斷缺陷、狀態轉移未定義、資料模型與業務嚴重衝突、無法滿足強制資料合規；Gate會攔截進入人工審批
+4. blocking_data_issues:僅放入Critical/High等級資料設計缺陷，觸發Gate阻斷。Medium/Low風險放至risk_list，不列入阻斷陣列。
+5. unresolved_questions:需要DBA/架構師/業務/資安澄清的資料設計疑點，標註target_stakeholder。
+6. risk_list:包含全部資料層風險，level只能使用四個允許字串Critical|High|Medium|Low；每筆風險必須包含描述、影響、緩解方案。
+
+## 輸出Artifact結構
+{
+  "entities": [{"entity_name":string,"fields":[{"name":string,"type":string,"nullable":bool,"business_desc":string}],"relations":[string]}],
+  "state_machines": [{"entity":string,"states":[string],"transitions":[{"from":string,"to":string,"trigger":string,"guard_condition":string}]}],
+  "data_dictionary": [{"field_full_name":string,"definition":string}],
+  "data_lifecycle": [{"entity":string,"retention_policy":string}],
+  "migration_plan": [{"version":string,"change_desc":string,"rollback_plan":string}],
+  "blocking_data_issues": [{"issue_id":string,"severity":"Critical|High","desc":string}],
+  "unresolved_questions": [{"question":string,"target_stakeholder":string}],
+  "risk_list": [{"risk_desc":string,"level":"Critical|High|Medium|Low","impact":string,"mitigation":string}],
+  "quality_score": number
+}
+
+驗收自檢守則:
+- 業務狀態轉移全部定義，沒有未定義狀態跳轉；
+- 所有業務實體映射至資料結構；
+- 每一次資料變更都配套回滾思路；
+- Critical/High資料缺陷登記至blocking_data_issues，作為Gate阻斷依據。
+
+禁止行為:
+- 不產生建表SQL，本階段僅限邏輯設計；建表SQL交由code-implementation階段生成；
+- 不改變上游技術方案已定義的模組邊界；
+- 禁止輸出JSON以外的任何文字。
+    acceptance_criteria:
+      - 狀態機不存在未定義狀態轉移
+      - 業務實體全部映射至資料結構
+      - 資料遷移配套回滾方案
+      - blocking_data_issues內severity僅可使用 Critical|High
+      - risk_list內風險等級僅使用 Critical|High|Medium|Low
+      - unresolved_questions 指定target_stakeholder
+      - quality_score為0~100數字；quality_score >=70 且 blocking_data_issues陣列為空才可通過Stage Gate
+    output_schema:
+      type: object
+      required:
+        - artifact
+        - unresolved_questions
+        - risk_list
+        - quality_score
+      properties:
+        artifact:
+          type: object
+          description: 主資料與狀態設計產物，結構固定
+          properties:
+            entities:
+              type: array
+              items:
+                type: object
+                required: [entity_name, fields, relations]
+                properties:
+                  entity_name:
+                    type: string
+                  fields:
+                    type: array
+                    items:
+                      type: object
+                      required: [name, type, nullable, business_desc]
+                      properties:
+                        name:
+                          type: string
+                        type:
+                          type: string
+                        nullable:
+                          type: boolean
+                        business_desc:
+                          type: string
+                  relations:
+                    type: array
+                    items:
+                      type: string
+            state_machines:
+              type: array
+              items:
+                type: object
+                required: [entity, states, transitions]
+                properties:
+                  entity:
+                    type: string
+                  states:
+                    type: array
+                    items:
+                      type: string
+                  transitions:
+                    type: array
+                    items:
+                      type: object
+                      required: [from, to, trigger, guard_condition]
+                      properties:
+                        from:
+                          type: string
+                        to:
+                          type: string
+                        trigger:
+                          type: string
+                        guard_condition:
+                          type: string
+            data_dictionary:
+              type: array
+              items:
+                type: object
+                required: [field_full_name, definition]
+                properties:
+                  field_full_name:
+                    type: string
+                  definition:
+                    type: string
+            data_lifecycle:
+              type: array
+              items:
+                type: object
+                required: [entity, retention_policy]
+                properties:
+                  entity:
+                    type: string
+                  retention_policy:
+                    type: string
+            migration_plan:
+              type: array
+              items:
+                type: object
+                required: [version, change_desc, rollback_plan]
+                properties:
+                  version:
+                    type: string
+                  change_desc:
+                    type: string
+                  rollback_plan:
+                    type: string
+            blocking_data_issues:
+              type: array
+              items:
+                type: object
+                required: [issue_id, severity, desc]
+                properties:
+                  issue_id:
+                    type: string
+                  severity:
+                    type: string
+                    enum: ["Critical", "High"]
+                  desc:
+                    type: string
+            unresolved_questions:
+              type: array
+              items:
+                type: object
+                required: [question, target_stakeholder]
+                properties:
+                  question:
+                    type: string
+                  target_stakeholder:
+                    type: string
+            risk_list:
+              type: array
+              items:
+                type: object
+                required: [risk_desc, level, impact, mitigation]
+                properties:
+                  risk_desc:
+                    type: string
+                  level:
+                    type: string
+                    enum: ["Critical", "High", "Medium", "Low"]
+                  impact:
+                    type: string
+                  mitigation:
+                    type: string
+            quality_score:
+              type: number
+              minimum: 0
+              maximum: 100
+        unresolved_questions:
+          type: array
+          description: 直通Gate的資料設計待澄清清單，與artifact內的unresolved_questions保持一致
+        risk_list:
+          type: array
+          description: 直通Gate的資料設計風險清單，與artifact內risk_list保持一致
+        quality_score:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: 資料設計完整度分數，Gate閘門判斷依據
+    error_handler:
+      retry_strategy: 1
+      max_retry_count: 3
+      fallback_action: mark_human_review
+      retry_prompt: "你的輸出JSON不符合schema，請重新產出嚴格符合schema的純JSON，不要任何額外文字、Markdown與註解"

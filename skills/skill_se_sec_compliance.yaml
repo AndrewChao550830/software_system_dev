@@ -1,0 +1,215 @@
+apiVersion: harness.io/v1
+kind: aiSkill
+metadata:
+  name: skill_se_sec_compliance
+  identifier: skill_se_sec_compliance
+  description: 安全合規檢查｜威脅建模、安全控制檢查、漏洞掃描與合規驗證
+  tags:
+    - software-engineering
+    - se-workflow
+spec:
+  version: 0.2.0
+  skillDefinition:
+    meta:
+      id: skill_se_sec_compliance
+      name: 安全合規檢查
+      description: 基於所有前置Artifact，進行威脅建模分析、檢查安全控制實施狀況、執行漏洞掃描與驗證法規合規性；識別安全阻斷問題供Gate審查
+      version: 0.2.0
+      depends_on: []  # This will be updated based on context in pipeline
+      output_artifact_type: security_compliance
+    input_schema:
+      type: object
+      properties:
+        project_context:
+          type: object
+          description: Harness全域ProjectContext，包含組織安全政策、法規要求、標準框架與威脅情報
+        user_input:
+          type: string
+          description: 安全需求補充、特別關注點與合規驗證範圍
+        previous_artifacts:
+          type: array
+          description: 所有前置Stage產物
+      required: [project_context]
+    core_prompt: |
+      【Skill ID: skill_se_sec_compliance｜職責:安全合規檢查｜主Skill】
+      任務目標:基於所有前置Artifact，進行威脅建模分析、檢查安全控制實施狀況、執行漏洞掃描與驗證法規合規性；識別安全阻斷問題供Gate審查；輸出完整安全合規檢查結構JSON。
+
+      輸入參考:所有前置Artifact、ProjectContext、安全需求補充。
+
+      執行步驟:
+      1. 威脅建模分析：根據系統架構與資料流程，識別潛在威脅與攻擊面，使用STRIDE或PASTA方法論。
+      2. 安全控制檢查：根據組織安全政策與業界標準(NIST、ISO27001、CIS等)，檢查相關控制實施狀況。
+      3. 漏洞掃描與驗證：執行靜態應用安全測試(SAST)、動態應用安全測試(DAST)與相依元件掃描，驗證修補狀況。
+      4. 法規合規性驗證：根據適用法規(GDPR、HIPAA、PCI-DSS等)，檢查相關控制要求符合度。
+      5. 識別安全阻斷問題blocking_vulnerabilities：Critical/High級別安全缺陷，直接影響系統安全性與合規性。
+      6. 收集安全改進建議放入unresolved_questions，標註負責團隊。
+      7. 輸出完整risk_list，分級Critical|High|Medium|Low，每筆風險包含描述、影響、緩解方案。
+
+      ## 強制輸出規則
+      1. 僅回傳單一純JSON，禁止前言、額外解釋、markdown、```json程式碼標籤、JSON註解。
+      2. 嚴格遵守下面Artifact結構，欄名不可修改，不可隨意增減頂層欄位。
+      3. quality_score 評分規則（0~100數值，供Gate閘門使用）
+         - 80~100:威脅建模完整覆蓋系統；安全控制符合率達標；漏洞掃描無Critical/High發現；法規合規性驗證通過；無Critical/High風險
+         - 70~79:主要威脅已識別；安全控制有主要項目符合；漏洞掃描僅有Medium/Low發現；法規合規有主要要求符合；識別主要安全風險；少量Medium/Low風險；滿足Gate放行門檻
+         - 60~69:威脅建模有主要方向但缺少次要威脅；安全控制存在不符合項；漏洞掃描有High發現但有修補計畫；法規合規存在缺口但有改進計畫；存在High風險但有緩解方案；無Critical阻斷項
+         - 0~59:威脅建模缺失或錯誤；安全控制嚴重不符合；漏洞掃描有Critical/High未修補發現；法規合規性驗證不通過；存在Critical/High安全風險無緩解方案；Gate會攔截進入人工審批
+      4. 威脅建模必須說明使用方法論與覆蓋範圍。
+      5. 安全控制檢查必須說明參考標準與檢查項目清單。
+      6. 漏洞掃描必須分別說明SAST、DAST與相依元件掃測試方法及工具。
+      7. 法規合規性驗證必須列出適用法規與具體檢查條款。
+      8. 安全阻斷問題必須為Critical/High級別且經驗證無誤報。
+
+      ## 輸出Artifact結構
+      {
+        "threat_model": [{"threat":string,"methodology":string,"assets":[string]}],
+        "security_controls": [{"control":string,"standard":string,"status":string}],
+        "vulnerability_scans": [{"scan_type":string,"findings":[string],"remediation":string}],
+        "compliance_checks": [{"regulation":string,"requirement":string,"status":string}],
+        "blocking_vulnerabilities": [{"vuln_id":string,"severity":"Critical|High","description":string}],
+        "unresolved_questions": [{"question":string,"responsible_team":string}],
+        "risk_list": [{"risk_desc":string,"level":"Critical|High|Medium|Low","impact":string,"mitigation":string}],
+        "quality_score": number
+      }
+
+      驗收自檢守則:
+      - 威脅建模必須說明方法論與覆蓋範圍
+      - 安全控制必須說明參考標準與檢查項目清單
+      - 漏洞掃描必須分別說明SAST、DAST與相依元件掃測試方法
+      - 法規合規性必須列出適用法規與具體檢查條款
+      - 安全阻斷問題必須為Critical/High級別且經驗證無誤報
+
+      禁止行為:
+      - 不做實體安全設備檢查或安防人員資質評估
+      - 不做安全事件應變流程設計或演練計畫
+      - 不做加密金鑰管理或硬體安全模塊設計
+      - 禁止輸出JSON以外的任何文字
+    acceptance_criteria:
+      - 威脅建模有方法論與覆蓋範圍說明
+      - 安全控制有參考標準與檢查項目清單說明
+      - 漏洞掃描有SAST、DAST與相依元件掃測試方法說明
+      - 法規合規性有適用法規與具體檢查條款說明
+      - 安全阻斷問題有Critical/High級別且經驗證無誤報
+      - risk_list風險等級使用 Critical|High|Medium|Low
+      - quality_score為0~100數字；quality_score >= 70 且 blocking_vulnerabilities陣列為空才可通過Stage Gate
+    output_schema:
+      type: object
+      required:
+        - artifact
+        - unresolved_questions
+        - risk_list
+        - quality_score
+      properties:
+        artifact:
+          type: object
+          description: 主安全合規檢查產物結構
+          properties:
+            threat_model:
+              type: array
+              items:
+                type: object
+                required: [threat, methodology, assets]
+                properties:
+                  threat:
+                    type: string
+                  methodology:
+                    type: string
+                  assets:
+                    type: array
+                    items:
+                      type: string
+            security_controls:
+              type: array
+              items:
+                type: object
+                required: [control, standard, status]
+                properties:
+                  control:
+                    type: string
+                  standard:
+                    type: string
+                  status:
+                    type: string
+            vulnerability_scans:
+              type: array
+              items:
+                type: object
+                required: [scan_type, findings, remediation]
+                properties:
+                  scan_type:
+                    type: string
+                  findings:
+                    type: array
+                    items:
+                      type: string
+                  remediation:
+                    type: string
+            compliance_checks:
+              type: array
+              items:
+                type: object
+                required: [regulation, requirement, status]
+                properties:
+                  regulation:
+                    type: string
+                  requirement:
+                    type: string
+                  status:
+                    type: string
+            blocking_vulnerabilities:
+              type: array
+              items:
+                type: object
+                required: [vuln_id, severity, description]
+                properties:
+                  vuln_id:
+                    type: string
+                  severity:
+                    type: string
+                    enum: ["Critical", "High"]
+                  description:
+                    type: string
+            unresolved_questions:
+              type: array
+              items:
+                type: object
+                required: [question, responsible_team]
+                properties:
+                  question:
+                    type: string
+                  responsible_team:
+                    type: string
+            risk_list:
+              type: array
+              items:
+                type: object
+                required: [risk_desc, level, impact, mitigation]
+                properties:
+                  risk_desc:
+                    type: string
+                  level:
+                    type: string
+                    enum: ["Critical", "High", "Medium", "Low"]
+                  impact:
+                    type: string
+                  mitigation:
+                    type: string
+            quality_score:
+              type: number
+              minimum: 0
+              maximum: 100
+        unresolved_questions:
+          type: array
+          description: 直通Gate的待解決問題清單，與artifact內的unresolved_questions保持一致
+        risk_list:
+          type: array
+          description: 直通Gate的安全合規階段風險清單，與artifact內risk_list保持一致
+        quality_score:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: 安全合規完整度分數，Gate閘門判斷依據
+    error_handler:
+      retry_strategy: 1
+      max_retry_count: 3
+      fallback_action: mark_human_review
+      retry_prompt: "你的輸出JSON不符合schema，請重新產出嚴格符合schema的純JSON，不要任何額外文字、Markdown與註解"

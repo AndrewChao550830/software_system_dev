@@ -1,0 +1,199 @@
+apiVersion: harness.io/v1
+kind: aiSkill
+metadata:
+  name: skill_se_feedback_iteration
+  identifier: skill_se_feedback_iteration
+  description: 回饋與迭代｜使用者回饋收集、問題追蹤與優先級排程、改進戒論與版本規劃
+  tags:
+    - software-engineering
+    - se-workflow
+spec:
+  version: 0.2.0
+  skillDefinition:
+    meta:
+      id: skill_se_feedback_iteration
+      name: 回饋與迭代
+      description: 基於部署與可觀測性Artifact，建立使用者回饋收集機制、問題追蹤與優先級排程系統、制定改進戒論與版本規劃策略；輸出feedback_iteration供後續Stage與Gate閘門判斷
+      version: 0.2.0
+      depends_on: [skill_se_observability]
+      output_artifact_type: feedback_iteration
+    input_schema:
+      type: object
+      properties:
+        project_context:
+          type: object
+          description: Harness全域ProjectContext，包含客戶服務政策、問題追蹤系統、版本發布流程與優先級會議
+        user_input:
+          type: string
+          description: 回饋需求補充、已知問題清單、改進建議與版本發布時間窗
+        previous_artifacts:
+          type: array
+          description: 前置Stage產物，包含observability
+      required: [project_context, previous_artifacts]
+    core_prompt: |
+      【Skill ID: skill_se_feedback_iteration｜職責:回饋與迭代｜主Skill】
+      任務目標:基於部署與可觀測性Artifact，建立使用者回饋收集機制、問題追蹤與優先級排程系統、制定改進戒論與版本規劃策略；輸出完整回饋與迭代結構JSON。
+
+      輸入參考:部署Artifact、可觀測性Artifact、ProjectContext、回饋需求補充。
+
+      執行步驟:
+      1. 使用者回饋收集機制：設計多渠道回饋收集、回饋分類標準與自動化回饋路由流程。
+      2. 問題追蹤與優先級排程：建立問題生命週期管理、影響嚴重度評估與優先級計算算法。
+      3. 改進戒論與版本規劃：根據問題優先級與資源可用性，制定改進實施計畫與版本發布節奏。
+      4. 整合非功能需求：回饋安全性、問題追蹤保密性與版本追溯性納入迭代機制設計。
+      5. 輸出完整risk_list，分級Critical|High|Medium|Low，每筆風險包含描述、影響、緩解方案。
+
+      ## 強制輸出規則
+      1. 僅回傳單一純JSON，禁止前言、額外解釋、markdown、```json程式碼標籤、JSON註解。
+      2. 嚴格遵守下面Artifact結構，欄名不可修改，不可隨意增減頂層欄位。
+      3. quality_score 評分規則（0~100數值，供Gate閘門使用）
+         - 80~100:回饋收集機制完整覆蓋渠道；問題追蹤算法具體可執行；版本規劃策略清晰可執行；改進戒論有資源匹配；無Critical/High風險
+         - 70~79:主要回饋收集渠道已設計；問題優先級有基本計算方法；版本規劃有主要milestone設定；識別主要迭代風險；少量Medium/Low風險；滿足Gate放行門檻
+         - 60~69:回饋收集存在主要渠道缺口；問題追蹤缺少關鍵決策點；版本規劃缺少重要時間點；存在High風險但有緩解方案；無Critical阻斷項
+         - 0~59:回饋收集機制設計不符合需求；問題追蹤算法不完整；版本規劃策略缺失；存在Critical/High迭代風險無緩解方案；Gate會攔截進入人工審批
+      4. 回饋收集機制必須說明收集渠道與自動化路由規則。
+      5. 問題追蹤必須定義問題狀態流程與解標準。
+      6. 版本規劃必須說明資源分配原則與時間估算方法。
+      7. 改進戒論必須包含改進項目描述與預期效益評估。
+      8. 迭代機制安全必須根據資料敏感度定義對應防護措施。
+
+      ## 輸出Artifact結構
+      {
+        "feedback_collection": [{"channel":string,"classification":string,"routing":string}],
+        "issue_tracking": [{"state":string,"priority_calc":string,"sla":string}],
+        "improvement_roadmap": [{"improvement":string,"resources":string,"timeline":string,"benefits":string}],
+        "version_planning": [{"version":string,"features":[string],"window":string,"criteria":string}],
+        "non_functional_iteration": [{"nf_aspect":string,"control":string,"validation":string}],
+        "risk_list": [{"risk_desc":string,"level":"Critical|High|Medium|Low","impact":string,"mitigation":string}],
+        "quality_score": number
+      }
+
+      驗收自檢守則:
+      - 回饋收集機制必須說明收集渠道與自動化路由規則
+      - 問題追蹤必須定義問題狀態流程與解標準
+      - 版本規劃必須說明資源分配原則與時間估算方法
+      - 改進戒論必須包含改進項目描述與預期效益評估
+      - 迭代機制安全必須說明防護措施
+
+      禁止行為:
+      - 不做客戶關係管理(CRM)系統選型或流程設計
+      - 不做軟體開發工具(SDK)整合或API穩定性承諾
+      - 不做市場分析或競爭情況調查設計
+      - 禁止輸出JSON以外的任何文字
+    acceptance_criteria:
+      - 回饋收集機制有收集渠道與自動化路由規則說明
+      - 問題追蹤有問題狀態流程與解標準說明
+      - 版本規劃有資源分配原則與時間估算方法說明
+      - 改進戒論有改進項目描述與預期效益評估
+      - 迭代機制安全有防護措施描述
+      - risk_list風險等級使用 Critical|High|Medium|Low
+      - quality_score為0~100數字；quality_score >= 70可通過Stage Gate
+    output_schema:
+      type: object
+      required:
+        - artifact
+        - risk_list
+        - quality_score
+      properties:
+        artifact:
+          type: object
+          description: 主回饋與迭代產物結構
+          properties:
+            feedback_collection:
+              type: array
+              items:
+                type: object
+                required: [channel, classification, routing]
+                properties:
+                  channel:
+                    type: string
+                  classification:
+                    type: string
+                  routing:
+                    type: string
+            issue_tracking:
+              type: array
+              items:
+                type: object
+                required: [state, priority_calc, sla]
+                properties:
+                  state:
+                    type: string
+                  priority_calc:
+                    type: string
+                  sla:
+                    type: string
+            improvement_roadmap:
+              type: array
+              items:
+                type: object
+                required: [improvement, resources, timeline, benefits]
+                properties:
+                  improvement:
+                    type: string
+                  resources:
+                    type: string
+                  timeline:
+                    type: string
+                  benefits:
+                    type: string
+            version_planning:
+              type: array
+              items:
+                type: object
+                required: [version, features, window, criteria]
+                properties:
+                  version:
+                    type: string
+                  features:
+                    type: array
+                    items:
+                      type: string
+                  window:
+                    type: string
+                  criteria:
+                    type: string
+            non_functional_iteration:
+              type: array
+              items:
+                type: object
+                required: [nf_aspect, control, validation]
+                properties:
+                  nf_aspect:
+                    type: string
+                  control:
+                    type: string
+                  validation:
+                    type: string
+            risk_list:
+              type: array
+              items:
+                type: object
+                required: [risk_desc, level, impact, mitigation]
+                properties:
+                  risk_desc:
+                    type: string
+                  level:
+                    type: string
+                    enum: ["Critical", "High", "Medium", "Low"]
+                  impact:
+                    type: string
+                  mitigation:
+                    type: string
+            quality_score:
+              type: number
+              minimum: 0
+              maximum: 100
+        risk_list:
+          type: array
+          description: 直通Gate的回饋與迭代階段風險清單，與artifact內risk_list保持一致
+    acceptance_criteria:
+      - 回饋機制設計完善且及時
+      - 迭代計畫明確且可執行
+      - 風險清單完整記錄所有識別風險及對應等級
+      - quality_score為0~100數字；quality_score >= 70 且 未有Critical/High回饋與迭代風險無緩解方案時才可通過Stage Gate
+    error_handler:
+      retry_strategy: 1
+      max_retry_count: 3
+      fallback_action: mark_human_review
+      retry_prompt: "你的輸出JSON不符合schema，請重新產出嚴格符合schema的純JSON，不要任何額外文字、Markdown與註解"

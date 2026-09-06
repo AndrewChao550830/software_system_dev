@@ -1,0 +1,188 @@
+apiVersion: harness.io/v1
+kind: aiSkill
+metadata:
+  name: 系統邊界
+  identifier: skill_se_system_boundary
+  description: 系統邊界定義｜C4模型、環境圖與利益相關者映射
+  tags:
+    - software-engineering
+    - se-workflow
+spec:
+  version: 0.2.0
+  skillDefinition:
+    meta:
+      id: skill_se_system_boundary
+      name: 系統邊界
+      description: 基於所有前置Artifact，使用C4模型定義系統邊界、繪製環境圖並進行利益相關者映射；輸出系統邊界定義供後續Stage使用
+      version: 0.2.0
+      depends_on: [skill_se_business_model]  # This will be updated based on context in pipeline
+      output_artifact_type: system_boundary
+    input_schema:
+      type: object
+      properties:
+        project_context:
+          type: object
+          description: Harness全域ProjectContext，包含組織架構說明與現有系統清單
+        user_input:
+          type: string
+          description: 特別關注的系統範圍或邊界假設
+        previous_artifacts:
+          type: array
+          description: 所有前置Stage產物，特别是商業模型產物
+      required: [project_context]
+    core_prompt: |
+      【Skill ID: skill_se_system_boundary｜職責:系統邊界｜主Skill】
+      任務目標:基於所有前置Artifact，使用C4模型定義系統邊界、繪製環境圖並進行利益相關者映射；輸出完整系統邊界定義結構JSON。
+      輸入參考:所有前置Artifact、ProjectContext、系統範圍特別假設。
+      執行步驟:
+      1. 系統擔當分析：根據利益相關者需求與業務目標，釐清系統在整體價值鏈中的角色與責任。
+      2. C4環境圖繪製：使用 C4 模型的環境圖層級，展示系統與用戶、其他系統及外部依賴的關係。
+      3. 容器層級識別：根據功能紐度與部署單位，劃分系統內容器（應用程式、資料庫、微服務等）。
+      4. 組件層輪廓：根據內聚性與耦合度原則，識別主要容器內的組件與其職責。
+      5. 利益相關者映射：識別並分類所有利益相關者，分析他們的需求、影響力與參與度。
+      6. 介面與協議規格化：定義系統間介面、通訊協議與資料交換格式。
+      7. 非功能需求對邊界的影響：考慮效能、安全與法規需求對系統邊界的影響與調整。
+      8. 輸出完整系統邊界定義結構JSON。
+
+      ## 強制輸出規則
+      1. 僅回傳單一純JSON，禁止前言、額外解釋、markdown、```json程式碼標籤、JSON註解。
+      2. 嚴格遵守下面Artifact結構，欄名不可修改，不可隨意增減頂層欄位。
+      3. quality_score 評分規則（0~100數值，供Gate閘門使用）
+         - 80~100:C4環境圖完整正確；容器劃分有明確依據；組件內聚性高耦合度低；利益相關者映射完整；介面規格清晰無歧義；無Critical/High風險
+         - 70~79:主要C4元素已識別；容器劃分有主要依據說明；組件輪廓有主要原則；利益相關者主要身份已映稱；介面規格有主要要求；識別主要系統風險；少量Medium/Low風險；滿足Gate放行門檻
+         - 60~69:C4環境圖有主要方向但缺少次要細節；容器劃分存在依據但缺少詳細說明；組件內聚性原則缺少說明；利益相關者映射缺少詳細分析；存在High風險但有緩解方案；無Critical阻斷項
+         - 0~59:C4環境圖缺失或錯誤；容器劃分依據不足；組件內聚性原則缺失；利益相關者映射缺失；存在Critical/High系統風險無緩解方案；Gate會攔截進入人工審批
+      4. C4模型必須說明使用層級（環境圖、容器、組件、程式碼）與範圍。
+      5. 環境圖必須說明系統與外部實體的關係類型與介面。
+      6. 容器識別必須說明功能紐度與部署單位的劃分依據。
+      7. 組件層分解必須說明內聚性與耦合度原則的應用方式。
+      8. 利益相關者映射必須說明識別方法與分類標準。
+
+      ## 輸出Artifact結構
+      {
+        "context_diagram": {"system":string,"users":[string],"systems":[string]},
+        "containers": [{"name":string,"type":string,"technology":string,"responsibility":string}],
+        "components": [{"container":string,"name":string,"technology":string,"responsibility":string}],
+        "stakeholder_mapping": [{"stakeholder":string,"role":string,"influence":"High|Medium|Low","needs":[string]}],
+        "interface_specs": [{"interface":string,"protocol":string,"data_format":string}],
+        "constraints": [{"constraint":string,"source":string,"impact":string}],
+        "quality_score": number
+      }
+
+      驗收自檢守則:
+      - C4環境圖必須說明系統與外部實體的關係類型與介面
+      - 容器識別必須說明功能紐度與部署單位的劃分依據
+      - 組件層分解必須說明內聚性與耦合度原則的應用方式
+      - 利益相關者映射必須說明識別方法與分類標準
+      - 介面與協議規格化必須說明系統間介面、通訊協議與資料交換格式
+      - 非功能需求對邊界的影響必須說明效能、安全與法規需求對系統邊界的影響與調整
+      - quality_score為0~100數字；quality_score >= 70 且 未有Critical/High系統風險無緩解方案時才可通過Stage Gate
+    output_schema:
+      type: object
+      required:
+        - artifact
+        - quality_score
+      properties:
+        artifact:
+          type: object
+          properties:
+            context_diagram:
+              type: object
+              properties:
+                system:
+                  type: string
+                users:
+                  type: array
+                  items:
+                    type: string
+                systems:
+                  type: array
+                  items:
+                    type: string
+            containers:
+              type: array
+              items:
+                type: object
+                required: [name, type, technology, responsibility]
+                properties:
+                  name:
+                    type: string
+                  type:
+                    type: string
+                  technology:
+                    type: string
+                  responsibility:
+                    type: string
+            components:
+              type: array
+              items:
+                type: object
+                required: [container, name, technology, responsibility]
+                properties:
+                  container:
+                    type: string
+                  name:
+                    type: string
+                  technology:
+                    type: string
+                  responsibility:
+                    type: string
+            stakeholder_mapping:
+              type: array
+              items:
+                type: object
+                required: [stakeholder, role, influence, needs]
+                properties:
+                  stakeholder:
+                    type: string
+                  role:
+                    type: string
+                  influence:
+                    type: string
+                    enum: ["High", "Medium", "Low"]
+                  needs:
+                    type: array
+                    items:
+                      type: string
+            interface_specs:
+              type: array
+              items:
+                type: object
+                required: [interface, protocol, data_format]
+                properties:
+                  interface:
+                    type: string
+                  protocol:
+                    type: string
+                  data_format:
+                    type: string
+            constraints:
+              type: array
+              items:
+                type: object
+                required: [constraint, source, impact]
+                properties:
+                  constraint:
+                    type: string
+                  source:
+                    type: string
+                  impact:
+                    type: string
+            quality_score:
+              type: number
+              minimum: 0
+              maximum: 100
+              description: 系統邊界完整度分數，Gate閘門判斷依據
+    acceptance_criteria:
+      - C4環境圖必須說明系統與外部實體的關係類型與介面
+      - 容器識別必須說明功能紐度與部署單位的劃分依據
+      - 組件層分解必須說明內聚性與耦合度原則的應用方式
+      - 利益相關者映射必須說明識別方法與分類標準
+      - 介面與協議規格化必須說明系統間介面、通訊協議與資料交換格式
+      - 非功能需求對邊界的影響必須說明效能、安全與法規需求對系統邊界的影響與調整
+      - quality_score為0~100數字；quality_score >= 70 且 未有Critical/High系統風險無緩解方案時才可通過Stage Gate
+    error_handler:
+      retry_strategy: 1
+      max_retry_count: 3
+      fallback_action: mark_human_review
+      retry_prompt: "你的輸出JSON不符合schema，請重新產出嚴格符合schema的純JSON，不要任何額外文字、Markdown與註解"

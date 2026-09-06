@@ -1,0 +1,187 @@
+﻿apiVersion: harness.io/v1
+kind: aiSkill
+metadata:
+  name: skill-se-cost-estimation
+  identifier: skill_se_cost_estimation
+  description: 成本與人力估算（橫切Skill）｜依需求規格拆解角色、內建/外包人力配比、人月估算、開發時程、成本結構與財務風險，任意階段可呼叫
+  tags:
+    - software-engineering
+    - se-workflow
+    - cross-cutting
+spec:
+  version: 0.2.0
+  skillDefinition:
+    meta:
+      id: skill-se-cost-estimation
+      name: 成本與人力估算（橫切Skill）
+      description: 依需求Artifact拆解所需角色、內建/外包人力配比、人月估算、階段時程、成本結構與財務風險；屬跨切面Skill，可在需求/架構階段呼叫，輸出成本估算Artifact供Gate閘門判斷
+      version: 0.2.0
+      depends_on: []
+      output_artifact_type: cost_estimation
+      cross_cutting: true
+    input_schema:
+      type: object
+      properties:
+        project_context:
+          type: object
+          description: Harness全域ProjectContext，包含幣別、人力單價參考、專案預算上限、組織人力政策
+        user_input:
+          type: string
+          description: 補充資訊，如組織內外包策略、地區人力行情、預算限制
+        previous_artifacts:
+          type: array
+          description: 前置Stage產物，通常包含需求規格requirement_spec，作為估算基底
+      required: [project_context]
+    core_prompt: |
+【Skill ID: skill-se-cost-estimation｜成本與人力估算｜橫切Skill，任意階段可觸發】
+任務目標:以前置需求Artifact為基礎，拆解專案所需角色、內建/外包人力組合、各角色人月投入、階段時程、總開發成本，識別預算、人力、時程相關風險，輸出固定結構JSON。
+輸入參考:ProjectContext、需求Artifact、組織人力政策、預算上限、人力單價參考。
+
+執行步驟:
+1. 依MoSCoW需求範圍，拆解完成專案必備角色，區分內建（自有全職）與外包（委外/駐點）。
+2. 按專案階段估算各角色投入人月；計算折算滿職人力FTE。
+3. 拆分專案週期:需求設計、開發、整合測試、UAT、上線準備；獨立估算上線後維護階段人力與成本。
+4. 依ProjectContext提供的人力單價，計算各角色階段成本、專案總成本、維護年成本。
+5. 辨識成本風險:需求蔓延、外包人力延遲、關鍵人力短缺、採購資源延遲，分級Critical|High|Medium|Low，定義影響與緩解方案。
+6. 收集成本與人力相關待澄清疑點，放入unresolved_questions。
+7. 判斷是否超出預算門檻，標註預算阻斷項blocking_budget_exceeded。
+
+## 強制輸出規則
+1. 僅回傳單一純JSON，禁止前言、額外解釋、markdown、```json程式碼標籤、JSON註解。
+2. 嚴格遵守下面Artifact結構，欄名不可修改，不可隨意增減頂層欄位。
+3. quality_score 評分規則（0~100數值，供Gate閘門使用）
+   - 80~100:需求範圍清晰；人力結構合理；估算假設完整且已驗證；未超出預算；僅少量Medium/Low風險
+   - 70~79:人力與時程估算完整，部分假設待驗證；未觸發預算超支阻斷條件，滿足Gate放行門檻
+   - 60~69:需求尚有未決問題，估算存在較大彈性空間；存在High風險，但未直接超出預算上限
+   - 0~59:估算基礎資訊嚴重不足、預算超出上限、存在Critical等級人力/成本風險；Gate會攔截進入人工審批
+4. blocking_budget_exceeded:布林值。true代表估算總成本超出project_context設定之預算上限，觸發Gate阻斷。
+5. unresolved_questions:收集需要PM/業務/財務澄清的人力、時程、預算相關疑點。
+6. risk_list:包含全部成本人力風險，level只能使用四個允許字串Critical|High|Medium|Low；每筆風險必須包含描述、影響、緩解方案。
+
+## 輸出Artifact結構
+{
+  "team_structure": [{"role":string,"type":"inhouse|outsourcing","fte":number,"monthly_rate":number,"stage_allocation":string}],
+  "project_timeline": [{"phase":string,"duration_month":number,"description":string}],
+  "cost_summary": {"total_project_cost":number,"annual_maintenance_cost":number,"currency":string},
+  "blocking_budget_exceeded": boolean,
+  "unresolved_questions": [{"question":string,"target_stakeholder":string}],
+  "risk_list": [{"risk_desc":string,"level":"Critical|High|Medium|Low","impact":string,"mitigation":string}],
+  "quality_score": number
+}
+
+驗收自檢守則:
+- 人力角色區分內建/外包，FTE與人月配置對應專案階段；
+- 成本摘要標示幣別，區分專案一次性成本與年度維護成本；
+- 預算超支狀態正確填入blocking_budget_exceeded；
+- 所有成本相關重大風險登記至risk_list並附緩解方案。
+
+禁止行為:
+- 不做精細到小時等級的微估算，以人月FTE粗估為主；
+- 不修改原始需求範圍，僅依給定需求做成本評估；
+- 禁止輸出JSON以外的任何文字。
+    acceptance_criteria:
+      - team_structure 角色明確區分 type:inhouse / outsourcing，FTE數值合理
+      - project_timeline 完整列出專案各階段與對應月數
+      - cost_summary 包含總專案成本、年度維護成本、幣別
+      - blocking_budget_exceeded 為布林值，正確標示是否超出預算上限
+      - risk_list內風險等級僅使用 Critical|High|Medium|Low
+      - unresolved_questions 指定target_stakeholder
+      - quality_score為0~100數字；quality_score >=70 且 blocking_budget_exceeded=false 才可通過Stage Gate
+    output_schema:
+      type: object
+      required:
+        - artifact
+        - unresolved_questions
+        - risk_list
+        - quality_score
+      properties:
+        artifact:
+          type: object
+          description: 主成本估算產物，結構固定
+          properties:
+            team_structure:
+              type: array
+              items:
+                type: object
+                required: [role, type, fte, monthly_rate, stage_allocation]
+                properties:
+                  role:
+                    type: string
+                  type:
+                    type: string
+                    enum: ["inhouse", "outsourcing"]
+                  fte:
+                    type: number
+                  monthly_rate:
+                    type: number
+                  stage_allocation:
+                    type: string
+            project_timeline:
+              type: array
+              items:
+                type: object
+                required: [phase, duration_month, description]
+                properties:
+                  phase:
+                    type: string
+                  duration_month:
+                    type: number
+                  description:
+                    type: string
+            cost_summary:
+              type: object
+              required: [total_project_cost, annual_maintenance_cost, currency]
+              properties:
+                total_project_cost:
+                  type: number
+                annual_maintenance_cost:
+                  type: number
+                currency:
+                  type: string
+            blocking_budget_exceeded:
+              type: boolean
+            unresolved_questions:
+              type: array
+              items:
+                type: object
+                required: [question, target_stakeholder]
+                properties:
+                  question:
+                    type: string
+                  target_stakeholder:
+                    type: string
+            risk_list:
+              type: array
+              items:
+                type: object
+                required: [risk_desc, level, impact, mitigation]
+                properties:
+                  risk_desc:
+                    type: string
+                  level:
+                    type: string
+                    enum: ["Critical", "High", "Medium", "Low"]
+                  impact:
+                    type: string
+                  mitigation:
+                    type: string
+            quality_score:
+              type: number
+              minimum: 0
+              maximum: 100
+        unresolved_questions:
+          type: array
+          description: 直通Gate的成本人力待澄清清單，與artifact內的unresolved_questions保持一致
+        risk_list:
+          type: array
+          description: 直通Gate的成本風險清單，與artifact內risk_list保持一致
+        quality_score:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: 成本估算完整度分數，Gate閘門判斷依據
+    error_handler:
+      retry_strategy: 1
+      max_retry_count: 3
+      fallback_action: mark_human_review
+      retry_prompt: "你的輸出JSON不符合schema，請重新產出嚴格符合schema的純JSON，不要任何額外文字、Markdown與註解"

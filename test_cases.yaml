@@ -1,0 +1,43 @@
+test_cases:
+  - case_id: TC001
+    name: 投融資合約管理系統
+    description: 基礎CRUD與管理員審核場景
+    project_context:
+      project_name: 專案投融資管理系統
+      team: 揚沛開發團隊
+      budget: 50000
+      compliance:
+        - 個人資料保護規範
+      non_functional_goals:
+        availability: "99.9%"
+    user_prompt: |
+      開發一個專案投融資管理系統，使用者可以輸入交易合約、查交易合約狀態，管理員可以審核交易合約，支援修改條件。
+
+  - case_id: TC002
+    name: 中小企業財務報表管理平台
+    description: 財務報導、多幣別、會計審核
+    project_context:
+      project_name: 中小企業財務報表管理平台
+      team: 揚沛財技團隊
+      budget: 80000
+      compliance:
+        - 商業會計法
+        - 稅務申報規範
+      non_functional_goals:
+        availability: "99.5%"
+    user_prompt: |
+      建置中小企業財務報表管理平台，支援多幣別記帳、自動產生財務報表、會計師線上審核，並可匯出XML稅務檔案。
+
+  - case_id: TC003
+    name: 資產投資組合追蹤系統
+    description: 投資組合、估值、風險報告
+    project_context:
+      project_name: 資產投資組合追蹤系統
+      team: 揚沛投資科技
+      budget: 120000
+      compliance:
+        - 洗錢防制規範
+      non_functional_goals:
+        availability: "99.95%"
+    user_prompt: |
+      開發資產投資組合追蹤系統，自動抓取資產市價、計算部位估值、產生風險報告，支援多投資人帳戶分離。

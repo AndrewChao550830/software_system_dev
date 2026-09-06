@@ -1,0 +1,211 @@
+﻿apiVersion: harness.io/v1
+kind: aiSkill
+metadata:
+  name: skill-se-system-boundary
+  identifier: skill_se_system_boundary
+  description: 系統邊界與上下文｜系統上下文圖、外部依賴、輸入輸出、集成契約、排除範圍；識別系統邊界阻斷問題供Gate審查
+  tags:
+    - software-engineering
+    - se-workflow
+spec:
+  version: 0.2.0
+  skillDefinition:
+    meta:
+      id: skill-se-system-boundary
+      name: 系統邊界與上下文
+      description: 接收業務模型Artifact，定義系統上下文、外部系統、輸入輸出介面、集成契約、範圍內/外項目；系統邊界定義前置Skill，識別邊界層阻斷缺陷，輸出system_boundary供後續Stage與Gate閘門判斷
+      version: 0.2.0
+      depends_on:
+        - skill-se-business-model
+      output_artifact_type: system_boundary
+      cross_cutting: false
+    input_schema:
+      type: object
+      properties:
+        project_context:
+          type: object
+          description: Harness全域ProjectContext，包含外部系統清單、集成合規、介面安全約束、外部服務SLA
+        user_input:
+          type: string
+          description: 系統邊界補充約束、外部依賴清單、排除範圍、人工澄清資訊
+        previous_artifacts:
+          type: array
+          description: 前置Stage產物，包含business_model
+      required: [project_context, previous_artifacts]
+    core_prompt: |
+【Skill ID: skill-se-system-boundary｜職責:系統邊界與上下文｜主Skill】
+任務目標:基於業務模型工件，定義系統上下文、外部參與者、外部依賴系統、輸入輸出、集成契約、範圍內/範圍外清單；識別系統邊界阻斷缺陷，輸出固定結構JSON。
+輸入參考:ProjectContext、業務模型Artifact、人工補充約束。
+
+執行步驟:
+1. 建立系統上下文:本系統、外部Actor、外部依賴系統。
+2. 定義系統輸入與輸出，明確資料流方向。
+3. 列出外部依賴系統、集成協定、介面契約、SLA。
+4. 劃分In Scope（本系統負責）與Out Of Scope（不實作，交由外部）。
+5. 識別邊界風險:外部系統可用性、介面版本衝突、外部依賴合規問題、資料邊界模糊。
+6. 識別系統邊界阻斷問題blocking_boundary_issues:外部依賴缺失、核心集成契約未定義、範圍模糊導致業務目標不可達；僅Critical/High納入阻斷陣列。
+7. 收集邊界定義待澄清項目放入unresolved_questions，標註target_stakeholder。
+8. 輸出完整risk_list，分級Critical|High|Medium|Low，每筆風險包含描述、影響、緩解方案。
+
+## 強制輸出規則
+1. 僅回傳單一純JSON，禁止前言、額外解釋、markdown、```json程式碼標籤、JSON註解。
+2. 嚴格遵守下面Artifact結構，欄名不可修改，不可隨意增減頂層欄位。
+3. quality_score 評分規則（0~100數值，供Gate閘門使用）
+   - 80~100:系統上下文完整；外部Actor/依賴系統清單齊全；輸入輸出與集成契約清晰；In/Out Scope明確；無Critical/High邊界阻斷問題；僅少量Medium/Low風險
+   - 70~79:核心外部依賴與主要資料流定義完備；範圍劃分清楚；少量外部假設待驗證，**無邊界阻斷問題**，滿足Gate放行門檻
+   - 60~69:主要邊界定義可用，但次要外部系統或異常集成場景缺失；存在High邊界風險但有緩解方案；無Critical阻斷項
+   - 0~59:存在Critical/High邊界阻斷缺陷、核心外部依賴缺失、系統範圍模糊造成業務目標無法落地；Gate會攔截進入人工審批
+4. blocking_boundary_issues:僅放入Critical/High等級邊界層缺陷，觸發Gate阻斷。Medium/Low風險放至risk_list，不列入阻斷陣列。
+5. unresolved_questions:架構/產品/外部廠商需澄清的邊界疑點，標註target_stakeholder。
+6. risk_list:包含全部系統邊界階段風險，level只能使用四個允許字串Critical|High|Medium|Low；每筆風險必須包含描述、影響、緩解方案。
+
+## 輸出Artifact結構
+{
+  "system_context": {"system_name":string,"actors":[string],"external_systems":[string]},
+  "io_datastream": [{"stream_id":string,"direction":"in|out","payload_desc":string,"trigger":string}],
+  "external_dependencies": [{"system_name":string,"protocol":string,"contract":string,"sla":string}],
+  "in_scope": [string],
+  "out_of_scope": [string],
+  "blocking_boundary_issues": [{"issue_id":string,"severity":"Critical|High","desc":string}],
+  "unresolved_questions": [{"question":string,"target_stakeholder":string}],
+  "risk_list": [{"risk_desc":string,"level":"Critical|High|Medium|Low","impact":string,"mitigation":string}],
+  "quality_score": number
+}
+
+驗收自檢守則:
+- 系統上下文、外部Actor與依賴系統完整；
+- 核心輸入輸出與集成契約定義清楚；
+- In/Out Scope明確，無模糊範圍；
+- Critical/High邊界缺陷登記至blocking_boundary_issues，作為Gate阻斷依據。
+
+禁止行為:
+- 不進入內部模組細節，本階段只定義系統外部邊界；
+- 禁止輸出JSON以外的任何文字。
+    acceptance_criteria:
+      - 系統上下文與核心外部依賴完整
+      - 主要IO資料流與集成契約定義清楚
+      - In Scope / Out Of Scope 範圍明確
+      - blocking_boundary_issues內severity僅可使用 Critical|High
+      - risk_list內風險等級僅使用 Critical|High|Medium|Low
+      - unresolved_questions 指定target_stakeholder
+      - quality_score為0~100數字；quality_score >=70 且 blocking_boundary_issues陣列為空才可通過Stage Gate
+    output_schema:
+      type: object
+      required:
+        - artifact
+        - unresolved_questions
+        - risk_list
+        - quality_score
+      properties:
+        artifact:
+          type: object
+          description: 主系統邊界產物，結構固定
+          properties:
+            system_context:
+              type: object
+              properties:
+                system_name:
+                  type: string
+                actors:
+                  type: array
+                  items:
+                    type: string
+                external_systems:
+                  type: array
+                  items:
+                    type: string
+            io_datastream:
+              type: array
+              items:
+                type: object
+                required: [stream_id, direction, payload_desc, trigger]
+                properties:
+                  stream_id:
+                    type: string
+                  direction:
+                    type: string
+                    enum: ["in", "out"]
+                  payload_desc:
+                    type: string
+                  trigger:
+                    type: string
+            external_dependencies:
+              type: array
+              items:
+                type: object
+                required: [system_name, protocol, contract, sla]
+                properties:
+                  system_name:
+                    type: string
+                  protocol:
+                    type: string
+                  contract:
+                    type: string
+                  sla:
+                    type: string
+            in_scope:
+              type: array
+              items:
+                type: string
+            out_of_scope:
+              type: array
+              items:
+                type: string
+            blocking_boundary_issues:
+              type: array
+              items:
+                type: object
+                required: [issue_id, severity, desc]
+                properties:
+                  issue_id:
+                    type: string
+                  severity:
+                    type: string
+                    enum: ["Critical", "High"]
+                  desc:
+                    type: string
+            unresolved_questions:
+              type: array
+              items:
+                type: object
+                required: [question, target_stakeholder]
+                properties:
+                  question:
+                    type: string
+                  target_stakeholder:
+                    type: string
+            risk_list:
+              type: array
+              items:
+                type: object
+                required: [risk_desc, level, impact, mitigation]
+                properties:
+                  risk_desc:
+                    type: string
+                  level:
+                    type: string
+                    enum: ["Critical", "High", "Medium", "Low"]
+                  impact:
+                    type: string
+                  mitigation:
+                    type: string
+            quality_score:
+              type: number
+              minimum: 0
+              maximum: 100
+        unresolved_questions:
+          type: array
+          description: 直通Gate的系統邊界待澄清清單，與artifact內的unresolved_questions保持一致
+        risk_list:
+          type: array
+          description: 直通Gate的系統邊界階段風險清單，與artifact內risk_list保持一致
+        quality_score:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: 系統邊界完整度分數，Gate閘門判斷依據
+    error_handler:
+      retry_strategy: 1
+      max_retry_count: 3
+      fallback_action: mark_human_review
+      retry_prompt: "你的輸出JSON不符合schema，請重新產出嚴格符合schema的純JSON，不要任何額外文字、Markdown與註解"

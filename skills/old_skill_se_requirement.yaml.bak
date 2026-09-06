@@ -1,0 +1,162 @@
+﻿apiVersion: harness.io/v1
+kind: aiSkill
+metadata:
+  name: skill-se-requirement
+  identifier: skill_se_requirement
+  description: ?�求�?�??從�?始業?��?述、利害�?係人輸入?�解?��??�求�?MoSCoW?��??�User Story?�辨識�?�?衝�?/模�?�?  tags:
+    - software-engineering
+    - se-workflow
+spec:
+  version: 0.2.0
+  skillDefinition:
+    meta:
+      id: skill-se-requirement
+      name: ?�求�?�?      description: 從�?始業?��?述、利害�?係人輸入?�解?��??�求�?MoSCoW?��??�User Story?�辨識�?設、�?突、模糊�?，輸?��?準�?求Artifact，�??�質評�?供Gate?��??�斷
+      version: 0.2.0
+      depends_on: []
+      output_artifact_type: requirement_spec
+    input_schema:
+      type: object
+      properties:
+        project_context:
+          type: object
+          description: Harness?��?ProjectContext，�??��?案基礎�?訊、�?算、�?程、�?織�???        user_input:
+          type: string
+          description: ?��??�求、人工�??��?訊、利害�?係人?��??��?清�?�?        previous_artifacts:
+          type: array
+          description: ?�置Stage?�物；�?求�?段�?始執行�??�為空陣??      required: [project_context, user_input]
+    core_prompt: |
+?�Skill ID: skill-se-requirement｜職責�??�求�?�???�求�??�產?��?任�??��?:�??��?業�??�述?�利害�?係人輸入，�?�?��校驗�?求�??�?�Must/Should/Could/Won?�t，�??�隱?��?設、�?求�?突、模糊�?，產?�User Story?��?求風?��??��?輸出?��?結�?JSON??
+輸入?�考�?ProjectContext?��?始�?求�?述、利害�?係人清單?��??��?業目標、人工�??��?清�?案�?
+?��?步�?�?1. 識別?�部?�害?��?人�??�自?��?，發?��?求�??��?突並?��???2. ?��??��??�業?��?，嚴?��??�「�?業目標」�??�系統�??��?求」�?3. ?�解?�?��?求�???MoSCoW ?��??��?（Must / Should / Could / Won?�t）�?4. ?�寫 User Story，格式�?As <角色>, I want <?�能>, so that <?��?；�?條Must層�?Story必�??�可驗�??��?準�?AC??5. ?�出?�?�隱?��?案�?設�??�確?��?；�?�?verified:true（已驗�?�?/ verified:false（未驗�?）�?6. ?�測?�求模糊、�??��??�、�??�測試、�?義�?清�??�目，放?�conflict_list?�unresolved_questions??7. ?��??��?段風?��??��?評估?�求�?完整?��?求頻繁�??�、利害�?係人?��?不�??�、�?規�?規缺???風險?�風?��?級�??�選:Critical|High|Medium|Low，�?筆風?��??��??��?述、影?�、緩�?��案�?8. ?�出 unresolved_questions:�??��?要人工�?清�?待確認�??��?標註詢�??��??�害?��?�?target_stakeholder??
+## 強制輸出規�?
+1. ?��??�單一純JSON，�?止�?言?��?外解?�、markdown?�```json程�?碼�?籤、JSON註解??2. ?�格?��?下面Artifact結�?，�??��??�修?��?不可?��?增�??�層欄�???3. quality_score 評�?規�?�?~100?�值�?供Gate?��?使用�?   - 80~100:�?業目標�??�、利害�?係人完整；MoSCoW?��??�確；無?�決?��?；�??��??��?設已驗�?；無?��?衝�?；Critical/High風險?�具?�緩�?���?   - 70~79:核心�?求�??��??��??�次要�?確�??��?，Critical/High風險?��?緩解?��?，滿足Gate?��??��?   - 60~69:核心�?求�??��?但�?多個未決�?題�??��??�鍵?�設尚未驗�?
+   - 0~59:�?求模糊、大?�未決�?題�?存在?�大?��??��?突�?Critical等�?風險沒�?緩解?��?，Gate?��??�進入人工審批
+4. moskow_backlog?��??�story?�用標�?User Story?��???5. unresolved_questions:收?��??��??�獲得�?確�?案�??��?，並標註?�該詢�??�個利害�?係人target_stakeholder??6. assumptions:�?案�?立�??��??�設；verified=true�?��已�?確�?，false�?��尚未驗�???7. conflict_list:�??��?求�??��??��??��??�目，寫清�?衝�??�述?��??�影?��?8. risk_list:�??�風?��?level?�能使用?�個�?許�?串�?必�?寫�?楚impact?�mitigation緩解?��???9. stakeholders:�??��??�相?�利害�?係人，�??��?稱、�??�、�?系統?��?待�?
+## 輸出Artifact結�?
+{
+  "business_goal": string,
+  "stakeholders": [{"name":string,"role":string,"expectation":string}],
+  "moskow_backlog": {"must":[story], "should":[story], "could":[story], "wont":[story]},
+  "assumptions": [{"content":string,"verified":bool}],
+  "conflict_list": [{"conflict_desc":string,"impact":string}],
+  "unresolved_questions": [{"question":string,"target_stakeholder":string}],
+  "risk_list": [{"risk_desc":string,"level":"Critical|High|Medium|Low","impact":string,"mitigation":string}],
+  "quality_score": number
+}
+
+驗收?�檢守�?�?- 每個Must?�求都?�寫?�可驗�?AC�?- ?�?��?設被?�確?��?�?- ?�求�?突全?��?記�?
+- 不�??�「無法測試、模糊�?述」�?Must級�?求�?
+禁止行為�?- 不�??��?術方案、�??�庫設�??��?式架構�??��??��?求層?��?- 不�??�利害�?係人?�自決�??�掩?��?求�?突�?- 禁止輸出JSON以�??�任何�?字�?    acceptance_criteria:
+      - 輸出artifact完全符�??��?JSON結�?，�??��?層�?位�??�缺�?      - ?�?�Must User Story?�含?��?證接?��??�AC
+      - ?�部業�??�設已登記�?標註?�否已�?�?      - ?�求�?突�??��??��???      - Must?�求�?存在?��?測試?�模糊�?�?      - risk_list?�風?��?級�?使用 Critical|High|Medium|Low
+      - quality_score??~100?��?；quality_score >= 70?�可?��?Stage Gate
+    output_schema:
+      type: object
+      required:
+        - artifact
+        - unresolved_questions
+        - risk_list
+        - quality_score
+      properties:
+        artifact:
+          type: object
+          description: 主�?求產?��?結�??��?
+          properties:
+            business_goal:
+              type: string
+            stakeholders:
+              type: array
+              items:
+                type: object
+                required: [name, role, expectation]
+                properties:
+                  name:
+                    type: string
+                  role:
+                    type: string
+                  expectation:
+                    type: string
+            moskow_backlog:
+              type: object
+              required: [must, should, could, wont]
+              properties:
+                must:
+                  type: array
+                  items:
+                    type: string
+                should:
+                  type: array
+                  items:
+                    type: string
+                could:
+                  type: array
+                  items:
+                    type: string
+                wont:
+                  type: array
+                  items:
+                    type: string
+            assumptions:
+              type: array
+              items:
+                type: object
+                required: [content, verified]
+                properties:
+                  content:
+                    type: string
+                  verified:
+                    type: boolean
+            conflict_list:
+              type: array
+              items:
+                type: object
+                required: [conflict_desc, impact]
+                properties:
+                  conflict_desc:
+                    type: string
+                  impact:
+                    type: string
+            unresolved_questions:
+              type: array
+              items:
+                type: object
+                required: [question, target_stakeholder]
+                properties:
+                  question:
+                    type: string
+                  target_stakeholder:
+                    type: string
+            risk_list:
+              type: array
+              items:
+                type: object
+                required: [risk_desc, level, impact, mitigation]
+                properties:
+                  risk_desc:
+                    type: string
+                  level:
+                    type: string
+                    enum: ["Critical", "High", "Medium", "Low"]
+                  impact:
+                    type: string
+                  mitigation:
+                    type: string
+            quality_score:
+              type: number
+              minimum: 0
+              maximum: 100
+        unresolved_questions:
+          type: array
+          description: ?�通Gate?�未決�?題�??��??�artifact?��?unresolved_questions保�?一??        risk_list:
+          type: array
+          description: ?�通Gate?�風?��??��??�artifact?�risk_list保�?一??        quality_score:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: ?�求�??�度?�數，Gate?��??�斷依�?
+    error_handler:
+      retry_strategy: 1
+      max_retry_count: 3
+      fallback_action: mark_human_review
+      retry_prompt: "你�?輸出JSON不符?�schema，�??�新?�出?�格符�?schema?��?JSON，�?要任何�?外�?字、Markdown?�註�?

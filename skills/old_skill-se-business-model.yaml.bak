@@ -1,0 +1,245 @@
+﻿apiVersion: harness.io/v1
+kind: aiSkill
+metadata:
+  name: skill-se-business-model
+  identifier: skill_se_business_model
+  description: 業務領域模型｜業務流程、領域實體、價值流、業務規則、角色與權限；識別業務層阻斷問題供Gate審查
+  tags:
+    - software-engineering
+    - se-workflow
+spec:
+  version: 0.2.0
+  skillDefinition:
+    meta:
+      id: skill-se-business-model
+      name: 業務領域模型
+      description: 接收需求工件，建立領域模型、業務價值流、業務流程、領域實體、業務規則、角色權限；業務建模前置Skill，識別業務層阻斷缺陷，輸出business_model供後續Stage與Gate閘門判斷
+      version: 0.2.0
+      depends_on:
+        - skill-se-requirement
+      output_artifact_type: business_model
+      cross_cutting: false
+    input_schema:
+      type: object
+      properties:
+        project_context:
+          type: object
+          description: Harness全域ProjectContext，包含產業領域、合規約束、業務組織角色、業務SLA
+        user_input:
+          type: string
+          description: 業務建模補充約束、業務場景、組織角色、人工澄清資訊
+        previous_artifacts:
+          type: array
+          description: 前置Stage產物，包含需求Artifact
+      required: [project_context, previous_artifacts]
+    core_prompt: |
+【Skill ID: skill-se-business-model｜職責:業務領域模型｜主Skill】
+任務目標:基於需求工件，建構領域業務模型，定義價值流、業務流程、領域實體、業務規則、角色與權限；識別業務層阻斷缺陷，輸出固定結構JSON。
+輸入參考:ProjectContext、需求Artifact、人工補充約束。
+
+執行步驟:
+1. 梳理業務價值流:從觸發事件到業務目標完成的完整價值鏈。
+2. 定義業務流程:主流程與替代/異常分支流程。
+3. 識別領域實體與實體之間的業務關係。
+4. 萃取可執行業務規則，區分Must/Should業務約束。
+5. 定義業務角色、職責與資料存取權限邊界。
+6. 識別業務層風險:業務規則衝突、流程歧義、角色職責模糊、合規衝突。
+7. 識別業務阻斷問題blocking_business_issues:核心業務規則矛盾、主價值流缺失、強制合規無法滿足；僅Critical/High納入阻斷陣列。
+8. 收集業務建模待澄清項目放入unresolved_questions，標註target_stakeholder。
+9. 輸出完整risk_list，分級Critical|High|Medium|Low，每筆風險包含描述、影響、緩解方案。
+
+## 強制輸出規則
+1. 僅回傳單一純JSON，禁止前言、額外解釋、markdown、```json程式碼標籤、JSON註解。
+2. 嚴格遵守下面Artifact結構，欄名不可修改，不可隨意增減頂層欄位。
+3. quality_score 評分規則（0~100數值，供Gate閘門使用）
+   - 80~100:價值流完整；主流程、替代流程與異常分支齊全；領域實體與業務規則清晰；角色權限明確；無Critical/High業務阻斷問題；僅少量Medium/Low風險
+   - 70~79:核心價值流與主業務流程完備；關鍵業務規則定義清楚；少量業務假設待驗證，**無業務阻斷問題**，滿足Gate放行門檻
+   - 60~69:主流程可用，但部分邊界業務規則/次要角色定義不足；存在High業務風險但有緩解方案；無Critical阻斷項
+   - 0~59:存在Critical/High業務阻斷缺陷、核心業務規則互相衝突、主價值流缺失；Gate會攔截進入人工審批
+4. blocking_business_issues:僅放入Critical/High等級業務層缺陷，觸發Gate阻斷。Medium/Low風險放至risk_list，不列入阻斷陣列。
+5. unresolved_questions:產品/業務/法務需澄清的業務模型疑點，標註target_stakeholder。
+6. risk_list:包含全部業務建模階段風險，level只能使用四個允許字串Critical|High|Medium|Low；每筆風險必須包含描述、影響、緩解方案。
+
+## 輸出Artifact結構
+{
+  "value_streams": [{"stream_id":string,"name":string,"trigger":string,"business_goal":string,"steps":[string]}],
+  "business_processes": [{"process_id":string,"name":string,"main_flow":[string],"alternative_flows":[string],"exception_flows":[string]}],
+  "domain_entities": [{"entity_name":string,"business_meaning":string,"business_relations":[string]}],
+  "business_rules": [{"rule_id":string,"constraint_level":"Must|Should","statement":string}],
+  "roles_and_permissions": [{"role_name":string,"responsibilities":[string],"data_access":[string]}],
+  "blocking_business_issues": [{"issue_id":string,"severity":"Critical|High","desc":string}],
+  "unresolved_questions": [{"question":string,"target_stakeholder":string}],
+  "risk_list": [{"risk_desc":string,"level":"Critical|High|Medium|Low","impact":string,"mitigation":string}],
+  "quality_score": number
+}
+
+驗收自檢守則:
+- 核心業務價值流完整，主流程與異常分支定義清楚；
+- 關鍵領域實體與業務規則無矛盾；
+- 業務角色與職責邊界清晰；
+- Critical/High業務缺陷登記至blocking_business_issues，作為Gate阻斷依據。
+
+禁止行為:
+- 不進入技術實作、資料表設計，本階段僅業務領域建模；
+- 禁止輸出JSON以外的任何文字。
+    acceptance_criteria:
+      - 核心業務價值流與主流程完整
+      - 關鍵業務規則無互相衝突
+      - 業務角色職責與資料存取邊界明確
+      - blocking_business_issues內severity僅可使用 Critical|High
+      - risk_list內風險等級僅使用 Critical|High|Medium|Low
+      - unresolved_questions 指定target_stakeholder
+      - quality_score為0~100數字；quality_score >=70 且 blocking_business_issues陣列為空才可通過Stage Gate
+    output_schema:
+      type: object
+      required:
+        - artifact
+        - unresolved_questions
+        - risk_list
+        - quality_score
+      properties:
+        artifact:
+          type: object
+          description: 主業務領域模型產物，結構固定
+          properties:
+            value_streams:
+              type: array
+              items:
+                type: object
+                required: [stream_id, name, trigger, business_goal, steps]
+                properties:
+                  stream_id:
+                    type: string
+                  name:
+                    type: string
+                  trigger:
+                    type: string
+                  business_goal:
+                    type: string
+                  steps:
+                    type: array
+                    items:
+                      type: string
+            business_processes:
+              type: array
+              items:
+                type: object
+                required: [process_id, name, main_flow, alternative_flows, exception_flows]
+                properties:
+                  process_id:
+                    type: string
+                  name:
+                    type: string
+                  main_flow:
+                    type: array
+                    items:
+                      type: string
+                  alternative_flows:
+                    type: array
+                    items:
+                      type: string
+                  exception_flows:
+                    type: array
+                    items:
+                      type: string
+            domain_entities:
+              type: array
+              items:
+                type: object
+                required: [entity_name, business_meaning, business_relations]
+                properties:
+                  entity_name:
+                    type: string
+                  business_meaning:
+                    type: string
+                  business_relations:
+                    type: array
+                    items:
+                      type: string
+            business_rules:
+              type: array
+              items:
+                type: object
+                required: [rule_id, constraint_level, statement]
+                properties:
+                  rule_id:
+                    type: string
+                  constraint_level:
+                    type: string
+                    enum: ["Must", "Should"]
+                  statement:
+                    type: string
+            roles_and_permissions:
+              type: array
+              items:
+                type: object
+                required: [role_name, responsibilities, data_access]
+                properties:
+                  role_name:
+                    type: string
+                  responsibilities:
+                    type: array
+                    items:
+                      type: string
+                  data_access:
+                    type: array
+                    items:
+                      type: string
+            blocking_business_issues:
+              type: array
+              items:
+                type: object
+                required: [issue_id, severity, desc]
+                properties:
+                  issue_id:
+                    type: string
+                  severity:
+                    type: string
+                    enum: ["Critical", "High"]
+                  desc:
+                    type: string
+            unresolved_questions:
+              type: array
+              items:
+                type: object
+                required: [question, target_stakeholder]
+                properties:
+                  question:
+                    type: string
+                  target_stakeholder:
+                    type: string
+            risk_list:
+              type: array
+              items:
+                type: object
+                required: [risk_desc, level, impact, mitigation]
+                properties:
+                  risk_desc:
+                    type: string
+                  level:
+                    type: string
+                    enum: ["Critical", "High", "Medium", "Low"]
+                  impact:
+                    type: string
+                  mitigation:
+                    type: string
+            quality_score:
+              type: number
+              minimum: 0
+              maximum: 100
+        unresolved_questions:
+          type: array
+          description: 直通Gate的業務建模待澄清清單，與artifact內的unresolved_questions保持一致
+        risk_list:
+          type: array
+          description: 直通Gate的業務建模階段風險清單，與artifact內risk_list保持一致
+        quality_score:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: 業務模型完整度分數，Gate閘門判斷依據
+    error_handler:
+      retry_strategy: 1
+      max_retry_count: 3
+      fallback_action: mark_human_review
+      retry_prompt: "你的輸出JSON不符合schema，請重新產出嚴格符合schema的純JSON，不要任何額外文字、Markdown與註解"

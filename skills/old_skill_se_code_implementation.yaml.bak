@@ -1,0 +1,210 @@
+﻿apiVersion: harness.io/v1
+kind: aiSkill
+metadata:
+  name: skill-se-code-implementation
+  identifier: skill_se_code_implementation
+  description: 代碼實現｜依架構/技術設計Artifact產生專案檔案結構、介面契約、業務邏輯骨架、型別註解、TODO清單，識別實作層阻斷風險
+  tags:
+    - software-engineering
+    - se-workflow
+spec:
+  version: 0.2.0
+  skillDefinition:
+    meta:
+      id: skill-se-code-implementation
+      name: 代碼實現
+      description: 接收系統架構、技術設計、資料結構Artifact，產生專案檔案結構、介面契約、業務邏輯骨架、型別註解與TODO清單；實作階段主Skill，識別程式實作阻斷問題，輸出code_artifact供後續Stage與Gate閘門判斷
+      version: 0.2.0
+      depends_on:
+        - skill-se-architecture
+        - skill-se-tech-design
+        - skill-se-data-state-design
+      output_artifact_type: code_artifact
+      cross_cutting: false
+    input_schema:
+      type: object
+      properties:
+        project_context:
+          type: object
+          description: Harness全域ProjectContext，包含程式編碼規範、技術棧約束、安全規則、命名規範
+        user_input:
+          type: string
+          description: 實作補充約束、程式風格偏好、人工澄清資訊
+        previous_artifacts:
+          type: array
+          description: 前置Stage產物，包含architecture_spec、tech_design、data_state_design、需求/安全/成本Artifact
+      required: [project_context, previous_artifacts]
+    core_prompt: |
+【Skill ID: skill-se-code-implementation｜職責:代碼實現｜主Skill】
+任務目標:依系統架構、技術方案、資料結構設計Artifact，產生模組程式骨架、檔案結構、介面定義、業務邏輯、型別註解，遵循專案編碼規範；識別程式實作層阻斷缺陷，輸出固定結構JSON。
+輸入參考:ProjectContext、架構Artifact、技術設計Artifact、資料狀態設計Artifact、需求與安全Artifact、人工補充約束。
+
+執行步驟:
+1. 依照架構元件拆分，產生完整專案檔案結構，標註每個檔案用途。
+2. 定義介面/API契約（Interface / API Schema），明確輸入輸出參數、資料型別。
+3. 實作核心業務邏輯，實現領域規則、狀態轉移，對應需求Must User Story。
+4. 加入型別註解、程式註解，遵守ProjectContext定義的編碼規範與命名約定。
+5. 標註待開發項目至todo_list，記錄檔案位置與待完成描述。
+6. 檢查安全風險:硬編碼祕密、輸入未驗證、並發競態、異常處理缺失。
+7. 識別實作阻斷問題blocking_implementation_issues:安全漏洞、無法實現業務規則、與架構衝突、強制編碼規範嚴重違反，僅Critical/High納入阻斷陣列。
+8. 收集實作階段待澄清疑點放入unresolved_questions，標註target_stakeholder。
+9. 輸出完整risk_list，分級Critical|High|Medium|Low，每筆風險包含描述、影響、緩解方案。
+
+## 強制輸出規則
+1. 僅回傳單一純JSON，禁止前言、額外解釋、markdown、```json程式碼標籤、JSON註解。
+2. 嚴格遵守下面Artifact結構，欄名不可修改，不可隨意增減頂層欄位。
+3. quality_score 評分規則（0~100數值，供Gate閘門使用）
+   - 80~100:檔案結構對應架構元件；介面契約完整；業務規則正確映射；無硬編碼祕密；無Critical/High實作阻斷問題；僅少量Medium/Low風險
+   - 70~79:核心程式骨架與介面齊全；業務邏輯符合需求；存在少量待驗證假設，**無實作阻斷問題**，滿足Gate放行門檻
+   - 60~69:核心業務可實現，但部分介面或異常處理存在缺口；存在High實作風險但具備緩解方案；無Critical阻斷項
+   - 0~59:存在Critical/High實作阻斷缺陷、硬編碼機密、業務規則無法落地、與架構嚴重衝突；Gate會攔截進入人工審批
+4. blocking_implementation_issues:僅放入Critical/High等級實作缺陷，觸發Gate阻斷。Medium/Low風險放至risk_list，不列入阻斷陣列。
+5. unresolved_questions:收集需要開發/架構/資安澄清的實作疑點，標註target_stakeholder。
+6. risk_list:包含全部實作風險，level只能使用四個允許字串Critical|High|Medium|Low；每筆風險必須包含描述、影響、緩解方案。
+
+## 輸出Artifact結構
+{
+  "file_structure": [{"path":string,"purpose":string}],
+  "code_artifacts": [{"file_path":string,"code":string,"language":string}],
+  "api_schemas": [{"api_name":string,"request_schema":string,"response_schema":string}],
+  "todo_list": [{"file_path":string,"desc":string}],
+  "blocking_implementation_issues": [{"issue_id":string,"severity":"Critical|High","desc":string}],
+  "unresolved_questions": [{"question":string,"target_stakeholder":string}],
+  "risk_list": [{"risk_desc":string,"level":"Critical|High|Medium|Low","impact":string,"mitigation":string}],
+  "quality_score": number
+}
+
+驗收自檢守則:
+- 每個核心函數定義輸入輸出契約；
+- 業務規則完整映射到程式骨架；
+- 禁止硬編碼機密、金鑰、密碼；
+- Critical/High實作缺陷登記至blocking_implementation_issues，作為Gate阻斷依據。
+
+禁止行為:
+- 不產生單元測試案例（交由測試Skill）；
+- 不生成部署腳本、Dockerfile、CI/CD流程；
+- 不改變前置階段已定義的架構、領域規則；
+- 禁止輸出JSON以外的任何文字。
+    acceptance_criteria:
+      - file_structure 每個項目包含path與purpose
+      - code_artifacts 包含file_path、code、language
+      - api_schemas 每個API具備request_schema與response_schema
+      - todo_list 標註對應檔案與待完成描述
+      - blocking_implementation_issues內severity僅可使用 Critical|High
+      - risk_list內風險等級僅使用 Critical|High|Medium|Low
+      - unresolved_questions 指定target_stakeholder
+      - quality_score為0~100數字；quality_score >=70 且 blocking_implementation_issues陣列為空才可通過Stage Gate
+    output_schema:
+      type: object
+      required:
+        - artifact
+        - unresolved_questions
+        - risk_list
+        - quality_score
+      properties:
+        artifact:
+          type: object
+          description: 主代碼實作產物，結構固定
+          properties:
+            file_structure:
+              type: array
+              items:
+                type: object
+                required: [path, purpose]
+                properties:
+                  path:
+                    type: string
+                  purpose:
+                    type: string
+            code_artifacts:
+              type: array
+              items:
+                type: object
+                required: [file_path, code, language]
+                properties:
+                  file_path:
+                    type: string
+                  code:
+                    type: string
+                  language:
+                    type: string
+            api_schemas:
+              type: array
+              items:
+                type: object
+                required: [api_name, request_schema, response_schema]
+                properties:
+                  api_name:
+                    type: string
+                  request_schema:
+                    type: string
+                  response_schema:
+                    type: string
+            todo_list:
+              type: array
+              items:
+                type: object
+                required: [file_path, desc]
+                properties:
+                  file_path:
+                    type: string
+                  desc:
+                    type: string
+            blocking_implementation_issues:
+              type: array
+              items:
+                type: object
+                required: [issue_id, severity, desc]
+                properties:
+                  issue_id:
+                    type: string
+                  severity:
+                    type: string
+                    enum: ["Critical", "High"]
+                  desc:
+                    type: string
+            unresolved_questions:
+              type: array
+              items:
+                type: object
+                required: [question, target_stakeholder]
+                properties:
+                  question:
+                    type: string
+                  target_stakeholder:
+                    type: string
+            risk_list:
+              type: array
+              items:
+                type: object
+                required: [risk_desc, level, impact, mitigation]
+                properties:
+                  risk_desc:
+                    type: string
+                  level:
+                    type: string
+                    enum: ["Critical", "High", "Medium", "Low"]
+                  impact:
+                    type: string
+                  mitigation:
+                    type: string
+            quality_score:
+              type: number
+              minimum: 0
+              maximum: 100
+        unresolved_questions:
+          type: array
+          description: 直通Gate的實作待澄清清單，與artifact內的unresolved_questions保持一致
+        risk_list:
+          type: array
+          description: 直通Gate的實作風險清單，與artifact內risk_list保持一致
+        quality_score:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: 代碼實作完整度分數，Gate閘門判斷依據
+    error_handler:
+      retry_strategy: 1
+      max_retry_count: 3
+      fallback_action: mark_human_review
+      retry_prompt: "你的輸出JSON不符合schema，請重新產出嚴格符合schema的純JSON，不要任何額外文字、Markdown與註解"

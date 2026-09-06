@@ -1,0 +1,222 @@
+﻿apiVersion: harness.io/v1
+kind: aiSkill
+metadata:
+  name: skill-se-deployment
+  identifier: skill_se_deployment
+  description: 部署發布｜部署策略、環境規劃、發布流程、回滾方案、變更風險；識別部署階段阻斷問題供Gate審查
+  tags:
+    - software-engineering
+    - se-workflow
+spec:
+  version: 0.2.0
+  skillDefinition:
+    meta:
+      id: skill-se-deployment
+      name: 部署發布
+      description: 接收測試驗證Artifact，定義多環境部署規劃、發布策略、資源配置、回滾機制、變更凍結條件；部署階段Skill，識別部署層阻斷缺陷，輸出deployment_spec供後續Stage與Gate閘門判斷
+      version: 0.2.0
+      depends_on:
+        - skill_se_test_validation
+      output_artifact_type: deployment_spec
+      cross_cutting: false
+    input_schema:
+      type: object
+      properties:
+        project_context:
+          type: object
+          description: Harness全域ProjectContext，包含環境清單、基礎設施約束、變更管理規範、維護視窗、資源上限
+        user_input:
+          type: string
+          description: 部署補充約束、發布策略偏好、環境清單、維護時段、人工澄清資訊
+        previous_artifacts:
+          type: array
+          description: 前置Stage產物，包含test_spec、code_artifact
+      required: [project_context, previous_artifacts]
+    core_prompt: |
+【Skill ID: skill-se-deployment｜職責:部署發布｜主Skill】
+任務目標:基於測試驗證工件，設計多環境部署架構、發布策略（藍綠/金絲雀/滾動）、資源規格、前置檢查、發布步驟、回滾機制與變更管控；識別部署階段阻斷缺陷，輸出固定結構JSON。
+輸入參考:ProjectContext、測試驗證Artifact、程式碼工件、人工補充約束。
+
+執行步驟:
+1. 定義部署環境:開發/測試/預生產/生產，各環境用途與隔離規則。
+2. 選擇發布策略，寫出完整發布步驟與前置檢查項目。
+3. 定義資源需求、配置管理、密碼與環境變數管理方案。
+4. 設計自動回滾觸發條件、手動回滾操作流程。
+5. 規劃維護視窗、變更凍結、發布審批流程。
+6. 識別部署風險:資源不足、依賴版本衝突、生產變更不可回滾、配置漂移。
+7. 識別部署阻斷問題blocking_deploy_issues:生產無效回滾方案、缺少環境隔離、關鍵前置檢查缺失；僅Critical/High納入阻斷陣列。
+8. 收集部署階段待澄清項目放入unresolved_questions，標註target_stakeholder。
+9. 輸出完整risk_list，分級Critical|High|Medium|Low，每筆風險包含描述、影響、緩解方案。
+
+## 強制輸出規則
+1. 僅回傳單一純JSON，禁止前言、額外解釋、markdown、```json程式碼標籤、JSON註解。
+2. 嚴格遵守下面Artifact結構，欄名不可修改，不可隨意增減頂層欄位。
+3. quality_score 評分規則（0~100數值，供Gate閘門使用）
+   - 80~100:多環境定義完整；發布策略與回滾機制完備；配置與密碼管理清晰；無Critical/High部署阻斷問題；僅少量Medium/Low風險
+   - 70~79:生產發布流程與核心回滾機制齊全；關鍵前置檢查完備；少量基礎設施假設待驗證，**無部署阻斷問題**，滿足Gate放行門檻
+   - 60~69:主發布流程可用，但次要環境或邊界異常場景缺失；存在High部署風險但有補救方案；無Critical阻斷項
+   - 0~59:存在Critical/High部署阻斷缺陷、生產無可用回滾方案、缺少必要環境隔離；Gate會攔截進入人工審批
+4. blocking_deploy_issues:僅放入Critical/High等級部署層缺陷，觸發Gate阻斷。Medium/Low風險放至risk_list，不列入阻斷陣列。
+5. unresolved_questions:SRE/基礎設施/變更管理需澄清的部署疑點，標註target_stakeholder。
+6. risk_list:包含全部部署階段風險，level只能使用四個允許字串Critical|High|Medium|Low；每筆風險必須包含描述、影響、緩解方案。
+
+## 輸出Artifact結構
+{
+  "environments": [{"env_id":string,"name":string,"purpose":string,"isolation_level":string}],
+  "release_strategy": {"type":string,"prechecks":[string],"steps":[string]},
+  "rollback_plan": {"trigger_conditions":[string],"rollback_steps":[string]},
+  "resource_spec": {"compute":string,"storage":string,"secrets_management":string},
+  "change_control": {"maintenance_window":string,"freeze_rules":[string],"approvers":[string]},
+  "blocking_deploy_issues": [{"issue_id":string,"severity":"Critical|High","desc":string}],
+  "unresolved_questions": [{"question":string,"target_stakeholder":string}],
+  "risk_list": [{"risk_desc":string,"level":"Critical|High|Medium|Low","impact":string,"mitigation":string}],
+  "quality_score": number
+}
+
+驗收自檢守則:
+- 各環境用途與隔離層級明確；
+- 生產環境具備可執行回滾方案；
+- 發布前置檢查清單完整，密碼/配置管理有規範；
+- Critical/High部署缺陷登記至blocking_deploy_issues，作為Gate阻斷依據。
+
+禁止行為:
+- 不直接執行部署，只產生部署規劃與流程定義；
+- 禁止輸出JSON以外的任何文字。
+    acceptance_criteria:
+      - 多環境定義與隔離規則完整
+      - 生產環境存在可執行回滾方案
+      - 發布前置檢查與密碼配置管理規範齊備
+      - blocking_deploy_issues內severity僅可使用 Critical|High
+      - risk_list內風險等級僅使用 Critical|High|Medium|Low
+      - unresolved_questions 指定target_stakeholder
+      - quality_score為0~100數字；quality_score >=70 且 blocking_deploy_issues陣列為空才可通過Stage Gate
+    output_schema:
+      type: object
+      required:
+        - artifact
+        - unresolved_questions
+        - risk_list
+        - quality_score
+      properties:
+        artifact:
+          type: object
+          description: 主部署發布產物，結構固定
+          properties:
+            environments:
+              type: array
+              items:
+                type: object
+                required: [env_id, name, purpose, isolation_level]
+                properties:
+                  env_id:
+                    type: string
+                  name:
+                    type: string
+                  purpose:
+                    type: string
+                  isolation_level:
+                    type: string
+            release_strategy:
+              type: object
+              properties:
+                type:
+                  type: string
+                prechecks:
+                  type: array
+                  items:
+                    type: string
+                steps:
+                  type: array
+                  items:
+                    type: string
+            rollback_plan:
+              type: object
+              properties:
+                trigger_conditions:
+                  type: array
+                  items:
+                    type: string
+                rollback_steps:
+                  type: array
+                  items:
+                    type: string
+            resource_spec:
+              type: object
+              properties:
+                compute:
+                  type: string
+                storage:
+                  type: string
+                secrets_management:
+                  type: string
+            change_control:
+              type: object
+              properties:
+                maintenance_window:
+                  type: string
+                freeze_rules:
+                  type: array
+                  items:
+                    type: string
+                approvers:
+                  type: array
+                  items:
+                    type: string
+            blocking_deploy_issues:
+              type: array
+              items:
+                type: object
+                required: [issue_id, severity, desc]
+                properties:
+                  issue_id:
+                    type: string
+                  severity:
+                    type: string
+                    enum: ["Critical", "High"]
+                  desc:
+                    type: string
+            unresolved_questions:
+              type: array
+              items:
+                type: object
+                required: [question, target_stakeholder]
+                properties:
+                  question:
+                    type: string
+                  target_stakeholder:
+                    type: string
+            risk_list:
+              type: array
+              items:
+                type: object
+                required: [risk_desc, level, impact, mitigation]
+                properties:
+                  risk_desc:
+                    type: string
+                  level:
+                    type: string
+                    enum: ["Critical", "High", "Medium", "Low"]
+                  impact:
+                    type: string
+                  mitigation:
+                    type: string
+            quality_score:
+              type: number
+              minimum: 0
+              maximum: 100
+        unresolved_questions:
+          type: array
+          description: 直通Gate的部署階段待澄清清單，與artifact內的unresolved_questions保持一致
+        risk_list:
+          type: array
+          description: 直通Gate的部署階段風險清單，與artifact內risk_list保持一致
+        quality_score:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: 部署方案完整度分數，Gate閘門判斷依據
+    error_handler:
+      retry_strategy: 1
+      max_retry_count: 3
+      fallback_action: mark_human_review
+      retry_prompt: "你的輸出JSON不符合schema，請重新產出嚴格符合schema的純JSON，不要任何額外文字、Markdown與註解"

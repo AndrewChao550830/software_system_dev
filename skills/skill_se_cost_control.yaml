@@ -1,0 +1,223 @@
+apiVersion: harness.io/v1
+kind: aiSkill
+metadata:
+  name: skill_se_cost_control
+  identifier: skill_se_cost_control
+  description: 成本控制｜成本估算與控制分析、預算監控與成本超風險識別
+  tags:
+    - software-engineering
+    - se-workflow
+spec:
+  version: 0.2.0
+  skillDefinition:
+    meta:
+      id: skill_se_cost_control
+      name: 成本控制
+      description: 基於所有前置Artifact，執行成本估算與控制分析、監控預算執行與識別成本超風險；輸出cost_control供後續Stage與Gate閘門判斷
+      version: 0.2.0
+      depends_on: []  # This will be updated based on context in pipeline
+      output_artifact_type: cost_control
+    input_schema:
+      type: object
+      properties:
+        project_context:
+          type: object
+          description: Harness全域ProjectContext，包含組織成本政策、人力成本單價、雲端定價與折扣政策
+        user_input:
+          type: string
+          description: 成本需求補課、特別假設與成本控制目標
+        previous_artifacts:
+          type: array
+          description: 所有前置Stage產物
+      required: [project_context]
+    core_prompt: |
+      【Skill ID: skill_se_cost_control｜職責:成本控制｜主Skill】
+      任務目標:基於所有前置Artifact，執行成本估算與控制分析、監控預算執行與識別成本超風險；輸出完整成本控制結構JSON。
+
+      輸入參考:所有前置Artifact、ProjectContext、成本需求補充。
+
+      執行步驟:
+      1. 開發人力成本估算：根據功能點分析或用戶故事估算，計算所需人月數與人力成本。
+      2. 基礎設施成本估算：根據技術設計與部署方案，估算計算資源、儲存資源與網路資源成本。
+      3. 營運維護成本估算：根據系統複雜度與用戶規模，估算監控維護、更新升級與技術支援成本。
+      4. 總體擁有成本(TCO)計算：包含直接成本與間接成本，考慮折舊與遞延稅項。
+      5. 識別成本超風險：根據技術不確定性、需求變更預期與價格波動風險，識別可能導致成本超支的因素。
+      6. 收集成本節約建議放入unresolved_questions，標註負責團隊。
+      7. 輸出完整risk_list，分級Critical|High|Medium|Low，每筆風險包含描述、影響、緩解方案。
+
+      ## 強制輸出規則
+      1. 僅回傳單一純JSON，禁止前言、額外解釋、markdown、```json程式碼標籤、JSON註解。
+      2. 嚴格遵守下面Artifact結構，欄名不可修改，不可隨意增減頂層欄位。
+      3. quality_score 評分規則（0~100數值，供Gate閘門使用）
+         - 80~100:成本估算有充分依據；人力成本計算透明；基礎設施成本有詳細分項；營運成本有合理假設；TCO計算完整；無Critical/High風險
+         - 70~79:主要成本項目已估算；人力成本有主要假設說明；基礎設施成本有主要分項；營運成本有基本假設；TCO有主要計算步驟；識別主要成本風險；少量Medium/Low風險；滿足Gate放行門檻
+         - 60~69:成本估算有主要方向但缺少次要分項；人力成本缺少詳細計算步驟；基礎設施成本存在估算缺口；營運成本假設不完整；存在High風險但有緩解方案；無Critical阻斷項
+         - 0~59:成本估算依據不足；人力成本計算不透明；基礎設施成本缺失；營運成本缺失；存在Critical/High成本風險無緩解方案；Gate會攔截進入人工審批
+      4. 人力成本估算必須說明估算方法論與主要假設。
+      5. 基礎設施成本必須按資源類型與使用量分別計算。
+      6. 營運成本必須說明服務等級與支援層級對應的成本結構。
+      7. TCO計算必須包含直接成本與間接成本項目。
+      8. 成本風險評估必須區分技術風險、需求風險與外部風險，並提供監控指標。
+
+      ## 輸出Artifact結構
+      {
+        "development_cost": [{"item":string,"estimation":string,"unit":string,"period":string}],
+        "infrastructure_cost": [{"resource":string,"quantity":string,"unit_cost":string,"period":string}],
+        "operational_cost": [{"item":string,"monthly_cost":string,"period":string}],
+        "total_cost_ownership": {"direct":string,"indirect":string,"total":string,"currency":string},
+        "cost_control_measures": [{"measure":string,"estimated_savings":string,"implementation_cost":string,"timeline":string}],
+        "budget_variance_analysis": [{"category":string,"budgeted":string,"actual":string,"variance":string,"variance_percent":string}],
+        "cost_risks": [{"risk":string,"probability":"low|medium|high","impact":"low|medium|high","mitigation":string}],
+        "unresolved_questions": [{"question":string,"responsible_team":string}],
+        "risk_list": [{"risk_desc":string,"level":"Critical|High|Medium|Low","impact":string,"mitigation":string}],
+        "quality_score": number
+      }
+
+      驗收自檢守則:
+      - 人力成本估算必須說明估算方法論與主要假設
+      - 基礎設施成本必須按資源類型與使用量分別計算
+      - 營運成本必須說明服務等級與支援層級對應的成本結構
+      - TCO計算必須包含直接成本與間接成本項目
+      - 成本風險評估必須說明風險類型與對應監控指標
+
+      禁止行為:
+      - 不做稅務籌劃或政府補助評估
+      - 不做外 匿委託成本分析或勞務派遣成本計算
+      - 不做退休金規劃或長期員工福利設計
+      - 禁止輸出JSON以外的任何文字
+    acceptance_criteria:
+      - 人力成本估算有估算方法論與主要假設說明
+      - 基礎設施成本按資源類型與使用量分別計算說明
+      - 營運成本有服務等級與支援層級對應的成本結構說明
+      - TCO計算包含直接成本與間接成本項目說明
+      - 成本控制措施有節省估算與實施成本說明
+      - 預算差異分析有預算vs實際比較說明
+      - 成本風險評估有風險類型與對應監控指標說明
+      - risk_list風險等級使用 Critical|High|Medium|Low
+      - quality_score為0~100數字；quality_score >= 70 且 未有Critical/High成本風險無緩解方案時才可通過Stage Gate
+    output_schema:
+      type: object
+      required:
+        - artifact
+        - unresolved_questions
+        - risk_list
+        - quality_score
+      properties:
+        artifact:
+          type: object
+          description: 主成本控制產物結構
+          properties:
+            development_cost:
+              type: array
+              items:
+                type: object
+                required: [item, estimation, unit, period]
+                properties:
+                  item:
+                    type: string
+                  estimation:
+                    type: string
+                  unit:
+                    type: string
+                  period:
+                    type: string
+            infrastructure_cost:
+              type: array
+              items:
+                type: object
+                required: [resource, quantity, unit_cost, period]
+                properties:
+                  resource:
+                    type: string
+                  quantity:
+                    type: string
+                  unit_cost:
+                    type: string
+                  period:
+                    type: string
+            operational_cost:
+              type: array
+              items:
+                type: object
+                required: [item, monthly_cost, period]
+                properties:
+                  item:
+                    type: string
+                  monthly_cost:
+                    type: string
+                  period:
+                    type: string
+            total_cost_ownership:
+              type: object
+              required: [direct, indirect, total, currency]
+              properties:
+                direct:
+                  type: string
+                indirect:
+                  type: string
+                total:
+                    type: string
+                currency:
+                    type: string
+            cost_risks:
+              type: array
+              items:
+                type: object
+                required: [risk, probability, impact, mitigation]
+                properties:
+                  risk:
+                    type: string
+                  probability:
+                    type: string
+                    enum: ["low", "medium", "high"]
+                  impact:
+                    type: string
+                    enum: ["low", "medium", "high"]
+                  mitigation:
+                    type: string
+            unresolved_questions:
+              type: array
+              items:
+                type: object
+                required: [question, responsible_team]
+                properties:
+                  question:
+                    type: string
+                  responsible_team:
+                    type: string
+            risk_list:
+              type: array
+              items:
+                type: object
+                required: [risk_desc, level, impact, mitigation]
+                properties:
+                  risk_desc:
+                    type: string
+                  level:
+                    type: string
+                    enum: ["Critical", "High", "Medium", "Low"]
+                  impact:
+                    type: string
+                  mitigation:
+                    type: string
+            quality_score:
+              type: number
+              minimum: 0
+              maximum: 100
+        unresolved_questions:
+          type: array
+          description: 直通Gate的待解決問題清單，與artifact內的unresolved_questions保持一致
+        risk_list:
+          type: array
+          description: 直通Gate的成本控制階段風險清單，與artifact內risk_list保持一致
+    acceptance_criteria:
+      - 成本估算準確且詳細
+      - 節流措施具體且可執行
+      - 未解決問題清單完整且有明確責任人
+      - 風險清單完整記錄所有識別風險及對應等級
+      - quality_score為0~100數字；quality_score >= 70 且 未有Critical/High成本風險無緩解方案時才可通過Stage Gate
+    error_handler:
+      retry_strategy: 1
+      max_retry_count: 3
+      fallback_action: mark_human_review
+      retry_prompt: "你的輸出JSON不符合schema，請重新產出嚴格符合schema的純JSON，不要任何額外文字、Markdown與註解"

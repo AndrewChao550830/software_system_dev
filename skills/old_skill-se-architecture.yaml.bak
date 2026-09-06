@@ -1,0 +1,243 @@
+﻿apiVersion: harness.io/v1
+kind: aiSkill
+metadata:
+  name: skill-se-architecture
+  identifier: skill_se_architecture
+  description: 系統架構設計｜依需求規格、安全與成本估算Artifact，產出高階架構、元件分解、部署拓樸、技術選型、架構風險與架構非功能需求驗證
+  tags:
+    - software-engineering
+    - se-workflow
+spec:
+  version: 0.2.0
+  skillDefinition:
+    meta:
+      id: skill-se-architecture
+      name: 系統架構設計
+      description: 接收需求規格、安全合規、成本估算Artifact，產出高階系統架構、元件分解、部署拓樸、技術選型、非功能需求驗證、架構風險清單；架構階段主Skill，輸出架構Artifact供後續Stage與Gate閘門判斷
+      version: 0.2.0
+      depends_on:
+        - skill-se-requirement
+        - skill-se-sec-compliance
+        - skill-se-cost-estimation
+      output_artifact_type: architecture_spec
+      cross_cutting: false
+    input_schema:
+      type: object
+      properties:
+        project_context:
+          type: object
+          description: Harness全域ProjectContext，包含組織技術標準、雲平台限制、合規強制要求、預算與人力約束
+        user_input:
+          type: string
+          description: 架構補充約束、技術偏好、既有系統整合需求、人工澄清資訊
+        previous_artifacts:
+          type: array
+          description: 前置Stage產物，包含requirement_spec、sec_compliance_audit、cost_estimation
+      required: [project_context, previous_artifacts]
+    core_prompt: |
+【Skill ID: skill-se-architecture｜系統架構設計｜主Skill】
+任務目標:以需求規格、安全合規審計、成本人力估算Artifact作為輸入，設計高階系統架構，分解系統元件、定義部署拓樸、技術選型、非功能需求驗證，識別架構層級風險與架構上的阻斷問題，輸出固定結構JSON。
+輸入參考:ProjectContext、需求Artifact、安全合規Artifact、成本估算Artifact、人工輸入架構約束。
+
+執行步驟:
+1. 萃取功能性需求與NFR非功能需求（效能、可用性、容錯、延展性、可維護性），確保架構滿足MoSCoW Must需求。
+2. 系統邊界界定:辨識外部依賴系統、第三方服務、使用者入口、資料邊界。
+3. 高階元件分解:定義系統模組/服務、模組職責、模組之間介面與資料流。
+4. 部署拓樸設計:環境劃分（開發/測試/UAT/生產）、雲/實體部署模式、網路邊界。
+5. 技術選型:語言、框架、資料庫、訊息佇列、儲存；選型必須兼顧安全控制、成本預算、組織技術栈限制。
+6. 對照前置安全Artifact驗證安全控制落實:認證授權、加密、稽核日誌、祕密管理，檢查是否解決前置blocking_vulnerabilities。
+7. 架構風險分析:效能瓶頸、單點故障、整合風險、技術債、營運複雜度；分級Critical|High|Medium|Low，定義影響與緩解方案。
+8. 識別架構阻斷問題blocking_architecture_issues:無法滿足強制合規、存在無法緩解Critical架構缺陷、架構方案超出預算/人力上限。
+9. 收集架構待澄清疑點，放入unresolved_questions，標註target_stakeholder。
+
+## 強制輸出規則
+1. 僅回傳單一純JSON，禁止前言、額外解釋、markdown、```json程式碼標籤、JSON註解。
+2. 嚴格遵守下面Artifact結構，欄名不可修改，不可隨意增減頂層欄位。
+3. quality_score 評分規則（0~100數值，供Gate閘門使用）
+   - 80~100:架構完整覆蓋Must需求與NFR；安全控制落實；技術選型符合組織標準與預算；無Critical/High架構阻斷問題；僅少量Medium/Low風險
+   - 70~79:核心架構完整；滿足Must需求與強制安全合規；存在少量待驗證假設，**無架構阻斷問題**，滿足Gate放行門檻
+   - 60~69:核心需求可被滿足，但NFR或安全控制存在缺口；存在High架構風險但有緩解方案；無Critical架構阻斷項
+   - 0~59:存在Critical/High架構阻斷問題、無法滿足強制合規/NFR、架構方案超出預算人力限制；Gate會攔截進入人工審批
+4. blocking_architecture_issues:僅放入Critical/High等級架構缺陷，會觸發Gate阻斷。Medium/Low風險放至risk_list，不列入阻斷陣列。
+5. unresolved_questions:收集需要架構師/資安/財務/業務澄清的架構疑點，標註target_stakeholder。
+6. risk_list:包含全部架構風險，level只能使用四個允許字串Critical|High|Medium|Low；每筆風險必須包含描述、影響、緩解方案。
+
+## 輸出Artifact結構
+{
+  "system_boundary": {"in_scope":[string],"out_of_scope":[string],"external_dependencies":[string]},
+  "component_model": [{"component_id":string,"name":string,"responsibility":string,"interfaces":[string]}],
+  "deployment_topology": {"environments":[string],"deployment_pattern":string,"network_zones":[string]},
+  "technology_selection": [{"component_id":string,"tech_stack":[string],"rationale":string}],
+  "nfr_verification": [{"nfr_name":string,"requirement":string,"verdict":"pass|partial|fail","evidence":string}],
+  "blocking_architecture_issues": [{"issue_id":string,"severity":"Critical|High","desc":string}],
+  "unresolved_questions": [{"question":string,"target_stakeholder":string}],
+  "risk_list": [{"risk_desc":string,"level":"Critical|High|Medium|Low","impact":string,"mitigation":string}],
+  "quality_score": number
+}
+
+驗收自檢守則:
+- 系統邊界明確定義in_scope/out_of_scope與外部依賴；
+- 元件職責與介面清晰，對應Must需求；
+- NFR非功能需求逐項驗證，標註pass/partial/fail；
+- 前置階段Critical/High安全阻斷漏洞在架構層有對應控制方案；
+- Critical/High架構缺陷登記至blocking_architecture_issues，做為Gate阻斷依據。
+
+禁止行為:
+- 不產生程式碼、詳細API Schema、資料庫Table設計，僅限高階架構層；
+- 不隨意擴增MoSCoW範圍，架構必須基於前置需求Artifact；
+- 禁止輸出JSON以外的任何文字。
+    acceptance_criteria:
+      - system_boundary 明確定義in_scope/out_of_scope與external_dependencies
+      - component_model 每個元件包含component_id、name、responsibility、interfaces
+      - deployment_topology 定義環境清單、部署模式、網路分區
+      - technology_selection 綁定component_id，附選型理由
+      - nfr_verification.status僅可使用 pass|partial|fail
+      - blocking_architecture_issues內severity僅可使用 Critical|High
+      - risk_list內風險等級僅使用 Critical|High|Medium|Low
+      - unresolved_questions 指定target_stakeholder
+      - quality_score為0~100數字；quality_score >=70 且 blocking_architecture_issues陣列為空才可通過Stage Gate
+    output_schema:
+      type: object
+      required:
+        - artifact
+        - unresolved_questions
+        - risk_list
+        - quality_score
+      properties:
+        artifact:
+          type: object
+          description: 主架構設計產物，結構固定
+          properties:
+            system_boundary:
+              type: object
+              required: [in_scope, out_of_scope, external_dependencies]
+              properties:
+                in_scope:
+                  type: array
+                  items:
+                    type: string
+                out_of_scope:
+                  type: array
+                  items:
+                    type: string
+                external_dependencies:
+                  type: array
+                  items:
+                    type: string
+            component_model:
+              type: array
+              items:
+                type: object
+                required: [component_id, name, responsibility, interfaces]
+                properties:
+                  component_id:
+                    type: string
+                  name:
+                    type: string
+                  responsibility:
+                    type: string
+                  interfaces:
+                    type: array
+                    items:
+                      type: string
+            deployment_topology:
+              type: object
+              required: [environments, deployment_pattern, network_zones]
+              properties:
+                environments:
+                  type: array
+                  items:
+                    type: string
+                deployment_pattern:
+                  type: string
+                network_zones:
+                  type: array
+                  items:
+                    type: string
+            technology_selection:
+              type: array
+              items:
+                type: object
+                required: [component_id, tech_stack, rationale]
+                properties:
+                  component_id:
+                    type: string
+                  tech_stack:
+                    type: array
+                    items:
+                      type: string
+                  rationale:
+                    type: string
+            nfr_verification:
+              type: array
+              items:
+                type: object
+                required: [nfr_name, requirement, verdict, evidence]
+                properties:
+                  nfr_name:
+                    type: string
+                  requirement:
+                    type: string
+                  verdict:
+                    type: string
+                    enum: ["pass", "partial", "fail"]
+                  evidence:
+                    type: string
+            blocking_architecture_issues:
+              type: array
+              items:
+                type: object
+                required: [issue_id, severity, desc]
+                properties:
+                  issue_id:
+                    type: string
+                  severity:
+                    type: string
+                    enum: ["Critical", "High"]
+                  desc:
+                    type: string
+            unresolved_questions:
+              type: array
+              items:
+                type: object
+                required: [question, target_stakeholder]
+                properties:
+                  question:
+                    type: string
+                  target_stakeholder:
+                    type: string
+            risk_list:
+              type: array
+              items:
+                type: object
+                required: [risk_desc, level, impact, mitigation]
+                properties:
+                  risk_desc:
+                    type: string
+                  level:
+                    type: string
+                    enum: ["Critical", "High", "Medium", "Low"]
+                  impact:
+                    type: string
+                  mitigation:
+                    type: string
+            quality_score:
+              type: number
+              minimum: 0
+              maximum: 100
+        unresolved_questions:
+          type: array
+          description: 直通Gate的架構待澄清清單，與artifact內的unresolved_questions保持一致
+        risk_list:
+          type: array
+          description: 直通Gate的架構風險清單，與artifact內risk_list保持一致
+        quality_score:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: 架構完整度分數，Gate閘門判斷依據
+    error_handler:
+      retry_strategy: 1
+      max_retry_count: 3
+      fallback_action: mark_human_review
+      retry_prompt: "你的輸出JSON不符合schema，請重新產出嚴格符合schema的純JSON，不要任何額外文字、Markdown與註解"

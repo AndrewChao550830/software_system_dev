@@ -1,0 +1,200 @@
+﻿apiVersion: harness.io/v1
+kind: aiSkill
+metadata:
+  name: skill-se-sec-compliance
+  identifier: skill_se_sec_compliance
+  description: 安全與合規風險（橫切Skill）｜STRIDE威脅建模、資料分級、安全控制點檢查、合規清單、阻斷型漏洞識別，任意階段可呼叫
+  tags:
+    - software-engineering
+    - se-workflow
+    - cross-cutting
+spec:
+  version: 0.2.0
+  skillDefinition:
+    meta:
+      id: skill-se-sec-compliance
+      name: 安全與合規風險（橫切Skill）
+      description: STRIDE威脅建模、資料分級、安全控制點檢查、合規清單、阻斷型漏洞識別；屬跨切面Skill，可在需求/架構/實作等任意階段呼叫，輸出安全審計Artifact，提供blocking_vulnerabilities供Gate閘門攔截判斷
+      version: 0.2.0
+      depends_on: []
+      output_artifact_type: sec_compliance_audit
+      cross_cutting: true
+    input_schema:
+      type: object
+      properties:
+        project_context:
+          type: object
+          description: Harness全域ProjectContext，包含專案基礎資訊、適用法規、組織安全政策
+        user_input:
+          type: string
+          description: 補充安全需求、合約/系統描述、人工澄清資訊
+        previous_artifacts:
+          type: array
+          description: 前置Stage產物，通常包含需求規格、架構文件等Artifact
+      required: [project_context]
+    core_prompt: |
+【Skill ID: skill-se-sec-compliance｜安全與合規風險｜橫切Skill，任意階段可觸發】
+任務目標:執行資料分級、STRIDE威脅建模、安全控制點檢查、法規合規檢查清單審查，識別安全漏洞與合規缺失，區分一般風險與Gate阻斷型漏洞，輸出固定結構JSON。
+輸入參考:ProjectContext、當前階段Artifact（需求/架構等）、補充安全說明。
+
+執行步驟:
+1. 資料分級:辨識系統內資料項目，分級為公開/內部/敏感/極機密，定義對應保護要求。
+2. 威脅建模（STRIDE），識別六大威脅:欺騙(Spoofing)、竄改(Tampering)、抵賴(Repudiation)、資訊洩露(Information Disclosure)、拒絕服務(Denial of Service)、權限提升(Elevation of Privilege)。每筆威脅標註威脅ID、STRIDE分類、描述、風險等級、建議控制措施。
+3. 安全控制檢查:認證、授權(RBAC)、資料加密、輸入驗證、祕密/金鑰管理、稽核日誌、會話管理。
+4. 對照適用隱私與產業法規，產出合規檢查清單，標記pass/fail/pending狀態與證據參考。
+5. 所有 Critical / High 嚴重漏洞放入 blocking_vulnerabilities，作為Gate閘門攔截依據；Medium/Low不列入阻斷漏洞，但保留於risk_list。
+6. 收集尚未澄清的安全疑點，放入unresolved_questions。
+7. 輸出完整risk_list，風險等級僅可選:Critical|High|Medium|Low；每筆風險必須包含描述、影響、緩解方案。
+
+## 強制輸出規則
+1. 僅回傳單一純JSON，禁止前言、額外解釋、markdown、```json程式碼標籤、JSON註解。
+2. 嚴格遵守下面Artifact結構，欄名不可修改，不可隨意增減頂層欄位。
+3. quality_score 評分規則（0~100數值，供Gate閘門使用）
+   - 80~100:資料分級完整；STRIDE威脅已識別並有對應控制；合規檢查大部分pass；無Critical/High阻斷漏洞；僅少量Medium/Low風險
+   - 70~79:核心安全控制到位；存在pending合規項，**無Critical/High阻斷漏洞**，滿足Gate放行門檻
+   - 60~69:存在部分High風險但可臨時緩解；資料分級或控制措施有缺失；無Critical漏洞
+   - 0~59:存在Critical/High阻斷漏洞、敏感資料無保護、重大安全控制缺失；Gate會攔截進入人工審批
+4. blocking_vulnerabilities 僅允許填入 severity=Critical 或 High 的項目；Medium/Low不進此陣列。
+5. unresolved_questions:收集需要人工/資安團隊澄清的安全相關疑點。
+6. risk_list:包含全部安全風險（含blocking漏洞對應風險），level只能使用四個允許字串；必須寫清楚impact與mitigation緩解方案。
+
+## 輸出Artifact結構
+{
+  "data_classification": [{"data_name":string,"level":string,"protection_req":string}],
+  "threat_model": [{"threat_id":string,"stride_category":string,"description":string,"risk_level":string,"control":string}],
+  "compliance_checklist": [{"control_id":string,"requirement":string,"status":"pass|fail|pending","evidence_ref":string}],
+  "blocking_vulnerabilities": [{"vuln_id":string,"severity":"Critical|High","desc":string}],
+  "unresolved_questions": [{"question":string}],
+  "risk_list": [{"risk_desc":string,"level":"Critical|High|Medium|Low","impact":string,"mitigation":string}],
+  "quality_score": number
+}
+
+驗收自檢守則:
+- 敏感資料保護措施有明確定義；
+- Critical/High漏洞完整登記至blocking_vulnerabilities，做為Gate阻斷依據；
+- STRIDE威脅分類正確；
+- 合規檢查清單每條項目標註狀態。
+
+禁止行為:
+- 不直接執行SAST/DAST掃描；僅做風險分析、威脅建模與合規檢查清單。
+- 不做原始程式碼審查；依據前置Artifact（需求/架構）推導安全風險。
+- 禁止輸出JSON以外的任何文字。
+    acceptance_criteria:
+      - 資料分級完整，敏感資料保護控制已定義
+      - Critical/High漏洞完整登記至blocking_vulnerabilities，作為Gate阻斷條件
+      - STRIDE威脅建模項目欄位齊全，stride_category使用標準STRIDE分類名稱
+      - compliance_checklist.status僅可使用 pass|fail|pending
+      - risk_list內風險等級僅使用 Critical|High|Medium|Low
+      - quality_score為0~100數字；quality_score >=70 且 blocking_vulnerabilities陣列為空才可通過Stage Gate
+    output_schema:
+      type: object
+      required:
+        - artifact
+        - unresolved_questions
+        - risk_list
+        - quality_score
+      properties:
+        artifact:
+          type: object
+          description: 主安全合規審計產物，結構固定
+          properties:
+            data_classification:
+              type: array
+              items:
+                type: object
+                required: [data_name, level, protection_req]
+                properties:
+                  data_name:
+                    type: string
+                  level:
+                    type: string
+                  protection_req:
+                    type: string
+            threat_model:
+              type: array
+              items:
+                type: object
+                required: [threat_id, stride_category, description, risk_level, control]
+                properties:
+                  threat_id:
+                    type: string
+                  stride_category:
+                    type: string
+                  description:
+                    type: string
+                  risk_level:
+                    type: string
+                    enum: ["Critical", "High", "Medium", "Low"]
+                  control:
+                    type: string
+            compliance_checklist:
+              type: array
+              items:
+                type: object
+                required: [control_id, requirement, status, evidence_ref]
+                properties:
+                  control_id:
+                    type: string
+                  requirement:
+                    type: string
+                  status:
+                    type: string
+                    enum: ["pass", "fail", "pending"]
+                  evidence_ref:
+                    type: string
+            blocking_vulnerabilities:
+              type: array
+              items:
+                type: object
+                required: [vuln_id, severity, desc]
+                properties:
+                  vuln_id:
+                    type: string
+                  severity:
+                    type: string
+                    enum: ["Critical", "High"]
+                  desc:
+                    type: string
+            unresolved_questions:
+              type: array
+              items:
+                type: object
+                required: [question]
+                properties:
+                  question:
+                    type: string
+            risk_list:
+              type: array
+              items:
+                type: object
+                required: [risk_desc, level, impact, mitigation]
+                properties:
+                  risk_desc:
+                    type: string
+                  level:
+                    type: string
+                    enum: ["Critical", "High", "Medium", "Low"]
+                  impact:
+                    type: string
+                  mitigation:
+                    type: string
+            quality_score:
+              type: number
+              minimum: 0
+              maximum: 100
+        unresolved_questions:
+          type: array
+          description: 直通Gate的安全未決問題清單，與artifact內的unresolved_questions保持一致
+        risk_list:
+          type: array
+          description: 直通Gate的安全風險清單，與artifact內risk_list保持一致
+        quality_score:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: 安全審計完整度分數，Gate閘門判斷依據
+    error_handler:
+      retry_strategy: 1
+      max_retry_count: 3
+      fallback_action: mark_human_review
+      retry_prompt: "你的輸出JSON不符合schema，請重新產出嚴格符合schema的純JSON，不要任何額外文字、Markdown與註解"

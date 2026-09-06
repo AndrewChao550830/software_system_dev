@@ -1,0 +1,198 @@
+apiVersion: harness.io/v1
+kind: aiSkill
+metadata:
+  name: skill_se_deployment
+  identifier: skill_se_deployment
+  description: 部署計畫｜部署策略選型、環境配置管理、藍綠部署與發布管道自動化
+  tags:
+    - software-engineering
+    - se-workflow
+spec:
+  version: 0.2.0
+  skillDefinition:
+    meta:
+      id: skill_se_deployment
+      name: 部署計畫
+      description: 基於程式實作與技術設計Artifact，制定部署策略、設計環境配置管理、規劃藍綠部署與發布管道自動化；輸出deployment供後續Stage與Gate閘門判斷
+      version: 0.2.0
+      depends_on: [skill_se_tech_design, skill_se_test_validation]
+      output_artifact_type: deployment_plan
+    input_schema:
+      type: object
+      properties:
+        project_context:
+          type: object
+          description: Harness全域ProjectContext，包含基礎設施限制、安全政策、合規要求與災害復原
+        user_input:
+          type: string
+          description: 部署需求補充、性能基準、回滾需求與監控需求
+        previous_artifacts:
+          type: array
+          description: 前置Stage產物，包含technical_design和test_validation
+      required: [project_context, previous_artifacts]
+    core_prompt: |
+      【Skill ID: skill_se_deployment｜職責:部署計畫｜主Skill】
+      任務目標:基於程式實作與技術設計Artifact，制定部署策略、設計環境配置管理、規劃藍綠部署與發布管道自動化；輸出完整部署計畫結構JSON。
+
+      輸入參考:程式實作Artifact、技術設計Artifact、ProjectContext、部署需求補充。
+
+      執行步驟:
+      1. 部署策略選型：評估重新建立替換(Rolling Update)、藍綠部署、金絲雀發布與重建(Redploy)等策略，考慮風險與復原複雜度。
+      2. 環境配置管理：設計環境變數管理、配置檔版本控制與環境隔離策略，使用ConfigMap與Secret等機制。
+      3. 藍綠部署規劃：設計兩個相同生產環境，流量切換機制與健康檢查點。
+      4. 發布管道自動化：設計CI/CD管道階段，包含建構、測試、安全掃描與部署批准流程。
+      5. 整合非功能需求：部署安全性、回滾能力、監控可用性與效能基準驗證納入部署計畫。
+      6. 輸出完整risk_list，分級Critical|High|Medium|Low，每筆風險包含描述、影響、緩解方案。
+
+      ## 強制輸出規則
+      1. 僅回傳單一純JSON，禁止前言、額外解釋、markdown、```json程式碼標籤、JSON註解。
+      2. 嚴格遵守下面Artifact結構，欄名不可修改，不可隨意增減頂層欄位。
+      3. quality_score 評分規則（0~100數值，供Gate閘門使用）
+         - 80~100:部署策略有充分依據；環境配置管理完整；藍綠部署設計可執行；發布管道包含安全閘門；無Critical/High風險
+         - 70~79:主要部署策略已評估；環境變數管理有主要機制；藍綠部署有基本流程設計；發布管道包含主要自動化步驟；識別主要部署風險；少量Medium/Low風險；滿足Gate放行門檻
+         - 60~69:部署策略有主要方向但缺少風險分析；環境配置存在管理缺口；藍綠部署缺少關鍵決策點；發布管道自動化不完整；存在High風險但有緩解方案；無Critical阻斷項
+         - 0~59:部署策略依據不足；環境變數管理缺失；藍綠部署設計不完整；發布管道缺少安全閘門；存在Critical/High部署風險無緩解方案；Gate會攔截進入人工審批
+      4. 部署策略必須說明適用場景與風險等級評估。
+      5. 環境配置管理必須包含版本控制機制及回滾程序。
+      6. 藍綠部署必須定義流量切換規則與健康檢查標準。
+      7. 發布管道必須包含建構件不可變性驗證與部署批准流程。
+      8. 非功能需求在部署中必須說明驗證點與回滾觸發條件。
+
+      ## 輸出Artifact結構
+      {
+        "deployment_strategy": [{"strategy":string,"rationale":string,"risk_level":string}],
+        "environment_config": [{"config_type":string,"management":string,"isolation":string}],
+        "blue_green_plan": [{"stage":string,"criteria":string,"actions":[string]}],
+        "release_pipeline": [{"stage":string,"automation_level":string,"gates":[string]}],
+        "non_functional_deployment": [{"nf_aspect":string,"validation":string,"rollback_trigger":string}],
+        "risk_list": [{"risk_desc":string,"level":"Critical|High|Medium|Low","impact":string,"mitigation":string}],
+        "quality_score": number
+      }
+
+      驗收自檢守則:
+      - 部署策略必須說明適用場景與風險評估
+      - 環境配置管理必須包含版本控制及回滾程序
+      - 藍綠部署必須定義流量切換規則與健康檢查標準
+      - 發布管道必須包含建構件不可變性驗證與部署批准流程
+      - 非功能需求必須說明驗證點與回滾觸發條件
+
+      禁止行為:
+      - 不做實體伺服器採購或機房佈署規劃
+      - 不做軟體授權管理或訂閱模式設計
+      - 不做數據庫版本升級或遷移策略設計
+      - 禁止輸出JSON以外的任何文字
+    acceptance_criteria:
+      - 部署策略有適用場景與風險等級評估說明
+      - 環境配置管理有版本控制機制及回滾程序
+      - 藍綠部署有流量切換規則與健康檢查標準
+      - 發布管道有建構件不可變性驗證與部heses批准流程
+      - 非功能需求有驗證點與回滾觸發條件說明
+      - risk_list風險等級使用 Critical|High|Medium|Low
+      - quality_score為0~100數字；quality_score >= 70可通過Stage Gate
+    output_schema:
+      type: object
+      required:
+        - artifact
+        - risk_list
+        - quality_score
+      properties:
+        artifact:
+          type: object
+          description: 主部署計畫產物結構
+          properties:
+            deployment_strategy:
+              type: array
+              items:
+                type: object
+                required: [strategy, rationale, risk_level]
+                properties:
+                  strategy:
+                    type: string
+                  rationale:
+                    type: string
+                  risk_level:
+                    type: string
+            environment_config:
+              type: array
+              items:
+                type: object
+                required: [config_type, management, isolation]
+                properties:
+                  config_type:
+                    type: string
+                  management:
+                    type: string
+                  isolation:
+                    type: string
+            blue_green_plan:
+              type: array
+              items:
+                type: object
+                required: [stage, criteria, actions]
+                properties:
+                  stage:
+                    type: string
+                  criteria:
+                    type: string
+                  actions:
+                    type: array
+                    items:
+                      type: string
+            release_pipeline:
+              type: array
+              items:
+                type: object
+                required: [stage, automation_level, gates]
+                properties:
+                  stage:
+                    type: string
+                  automation_level:
+                    type: string
+                  gates:
+                    type: array
+                    items:
+                      type: string
+            non_functional_deployment:
+              type: array
+              items:
+                type: object
+                required: [nf_aspect, validation, rollback_trigger]
+                properties:
+                  nf_aspect:
+                    type: string
+                  validation:
+                    type: string
+                  rollback_trigger:
+                    type: string
+            risk_list:
+              type: array
+              items:
+                type: object
+                required: [risk_desc, level, impact, mitigation]
+                properties:
+                  risk_desc:
+                    type: string
+                  level:
+                    type: string
+                    enum: ["Critical", "High", "Medium", "Low"]
+                  impact:
+                    type: string
+                  mitigation:
+                    type: string
+            quality_score:
+              type: number
+              minimum: 0
+              maximum: 100
+        risk_list:
+          type: array
+          description: 直通Gate的部署計畫階段風險清單，與artifact內risk_list保持一致
+    acceptance_criteria:
+      - 部署策略完整且可執行
+      - 回退機制設計完善
+      - 風險清單完整記錄所有識別風險及對應等級
+      - quality_score為0~100數字；quality_score >= 70 且 未有Critical/High部署風險無緩解方案時才可通過Stage Gate
+    error_handler:
+      retry_strategy: 1
+      max_retry_count: 3
+      fallback_action: mark_human_review
+      retry_prompt: "你的輸出JSON不符合schema，請重新產出嚴格符合schema的純JSON，不要任何額外文字、Markdown與註解"

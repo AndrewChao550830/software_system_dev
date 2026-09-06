@@ -1,0 +1,252 @@
+apiVersion: harness.io/v1
+kind: aiSkill
+metadata:
+  name: 商業模型
+  identifier: skill_se_business_model
+  description: 商業模型｜價值鏈分析、收入模式設計、成本結構優化與競爭定位策略
+  tags:
+    - software-engineering
+    - se-workflow
+spec:
+  version: 0.2.0
+  skillDefinition:
+    meta:
+      id: skill_se_business_model
+      name: 商業模型
+      description: 基於所有前置Artifact，執行價值鏈與收入模式設計、分析成本結構與制定競爭策略；輸出商業模型供後續Stage與Gate閘門判斷
+      version: 0.2.0
+      depends_on: [skill_se_requirement]  # This will be updated based on context in pipeline
+      output_artifact_type: business_model
+    input_schema:
+      type: object
+      properties:
+        project_context:
+          type: object
+          description: Harness全域ProjectContext，包含組織戰略目標、市場定位與產品線規劃
+        user_input:
+          type: string
+          description: 特別關注的商業模式面向或假設
+        previous_artifacts:
+          type: array
+          description: 所有前置Stage產物，特别是需求理解產物
+      required: [project_context]
+    core_prompt: |
+      【Skill ID: skill_se_business_model｜職責:商業模型｜主Skill】
+      任務目標:基於所有前置Artifact，執行價值鏈與收入模式設計、分析成本結構與制定競爭策略；輸出完整商業模型結構JSON。
+      輸入參考:所有前置Artifact、ProjectContext、商業模式特殊假設。
+      執行步驟:
+      1. 價值鏈分析：根據 Porter 價值鏈框架，分析主要活動與支援活動，識別價值創造點與成本驅動因素。
+      2. 收入模式設計：評估交易、訂閱、授權、廣告及混合模式，設計主要收入來源與定價策略。
+      3. 成本結構分析：區分固定成本與變動成本，分析人力、技術與場地成本結構。
+      4. 競爭定位策略：根據 Five Forces 分析，制定差異化、成本領先或聚焦策略。
+      5. 商業模式畫布填寫：使用 Business Model Canvas 填寫九個區塊，確保邏輯一致性與完整性。
+      6. 財務預測與敏感性分析：制定 3-5 年收入、成本與現金流預測，執行關鍵假設敏感性測試。
+      7. 風險識別與因應策略：識別市場、技術與執行風險，制定因應方案與監控指標。
+      8. 輸出完整商業模式結構JSON。
+
+      ## 強制輸出規則
+      1. 僅回傳單一純JSON，禁止前言、額外解釋、markdown、```json程式碼標籤、JSON註解。
+      2. 嚴格遵守下面Artifact結構，欄名不可修改，不可隨意增減頂層欄位。
+      3. quality_score 評分規則（0~100數值，供Gate閘門使用）
+         - 80~100:價值鏈分析完整；收入模式有明確假設與驗證；成本結構有詳細分項；競爭策略有清晰差異化點；財務預測合理；無Critical/High風險
+         - 70~79:主要價值鏈已分析；收入模式有主要假設說明；成本結構有主要分項；競爭策略有主要方向；財務預測有主要計算步驟；識別主要商業風險；少量Medium/Low風險；滿足Gate放行門檻
+         - 60~69:價值鏈分析有主要方向但缺少次要項目；收入模式存在主要假設但缺少驗證；成本結構存在估算缺口；競爭策略缺少詳細說明；存在High風險但有緩解方案；無Critical阻斷項
+         - 0~59:價值鏈分析缺失或錯誤；收入模式假設不足；成本結構缺失；競爭策略缺失；存在Critical/High商業風險無緩解方案；Gate會攔截進入人工審批
+      4. 價值鏈分析必須說明主要活動與支援活動的劃分依據。
+      5. 收入模式設計必須說明定價策略與目標客群對應的收入來源。
+      6. 成本結構分析必須按成本類型與行為特徵分別計算。
+      7. 競爭定位策略必須說明參考分析框架與核心假設。
+      8. 財務預測必須說明預測期間與主要假設說明。
+
+      ## 輸出Artifact結構
+      {
+        "value_chain_analysis": {"primary_activities":[string],"support_activities":[string]},
+        "revenue_model": {"streams":[{"type":string,"description":string,"pricing":string}],"mix_percent":string},
+        "cost_structure": {"fixed":string,"variable":string,"breakdown":[{ "category":string,"percentage":string}]},
+        "competitive_strategy": {"approach":string,"advantage":string,"target_segment":string},
+        "business_model_canvas": {"segments":[{"segment":string,"content":string}]},
+        "financial_projections": {"year":[string],"revenue":[string],"cost":[string],"cash_flow":[string]},
+        "assumptions": [{"area":string,"assumption":string,"rationale":string}],
+        "sensitivity_analysis": [{"variable":string,"base_case":string,"change_percent":string,"impact":string}],
+        "business_risks": [{"risk":string,"probability":"low|medium|high","impact":"low|medium|high","mitigation":string}],
+        "quality_score": number
+      }
+
+      驗收自檢守則:
+      - 價值鏈分析必須說明主要活動與支援活動的劃分依據
+      - 收入模式設計必須說明定價策略與目標客群對應的收入來源
+      - 成本結構分析必須按成本類型與行為特徵分別計算
+      - 競爭定位策略必須說明參考分析框架與核心假設
+      - 財務預測必須說明預測期間與主要假設說明
+
+      禁止行為:
+      - 不做實體製造或供應鏈深度分析
+      - 不做員工股權激勵或長期現金補償設計
+      - 不做併購整合或資產重組評估
+      - 禁止輸出JSON以外的任何文字
+    acceptance_criteria:
+      - 價值鏈分析有主要活動與支援活動的劃分依據說明
+      - 收入模式設計有定價策略與目標客群對應的收入來源說明
+      - 成本結構分析按成本類型與行為特徵分別計算說明
+      - 競爭定位策略有參考分析框架與核心假設說明
+      - 財務預測有預測期間與主要假設說明
+      - 商業模式畫布有九個區塊填寫說明
+      - 財務預測與敏感性分析有預測期間與主要假設說明
+      - 風險識別與因應策略有風險類型與對應監控指標說明
+      - quality_score為0~100數字；quality_score >= 70 且 未有Critical/High商業風險無緩解方案時才可通過Stage Gate
+    output_schema:
+      type: object
+      required:
+        - artifact
+        - quality_score
+      properties:
+        artifact:
+          type: object
+          properties:
+            value_chain_analysis:
+              type: object
+              properties:
+                primary_activities:
+                  type: array
+                  items:
+                    type: string
+                support_activities:
+                  type: array
+                  items:
+                    type: string
+            revenue_model:
+              type: object
+              properties:
+                streams:
+                  type: array
+                  items:
+                    type: object
+                    required: [type, description, pricing]
+                    properties:
+                      type:
+                        type: string
+                      description:
+                        type: string
+                      pricing:
+                        type: string
+                mix_percent:
+                  type: string
+            cost_structure:
+              type: object
+              properties:
+                fixed:
+                  type: string
+                variable:
+                  type: string
+                breakdown:
+                  type: array
+                  items:
+                    type: object
+                    required: [category, percentage]
+                    properties:
+                      category:
+                        type: string
+                      percentage:
+                        type: string
+            competitive_strategy:
+              type: object
+              properties:
+                approach:
+                  type: string
+                advantage:
+                  type: string
+                target_segment:
+                  type: string
+            business_model_canvas:
+              type: object
+              properties:
+                segments:
+                  type: array
+                  items:
+                    type: object
+                    required: [segment, content]
+                    properties:
+                      segment:
+                        type: string
+                      content:
+                        type: string
+            financial_projections:
+              type: object
+              properties:
+                year:
+                  type: array
+                  items:
+                    type: string
+                revenue:
+                  type: array
+                  items:
+                    type: string
+                cost:
+                  type: array
+                  items:
+                    type: string
+                cash_flow:
+                  type: array
+                  items:
+                    type: string
+            assumptions:
+              type: array
+              items:
+                type: object
+                required: [area, assumption, rationale]
+                properties:
+                  area:
+                    type: string
+                  assumption:
+                    type: string
+                  rationale:
+                    type: string
+            sensitivity_analysis:
+              type: array
+              items:
+                type: object
+                required: [variable, base_case, change_percent, impact]
+                properties:
+                  variable:
+                    type: string
+                  base_case:
+                    type: string
+                  change_percent:
+                    type: string
+                  impact:
+                    type: string
+            business_risks:
+              type: array
+              items:
+                type: object
+                required: [risk, probability, impact, mitigation]
+                properties:
+                  risk:
+                    type: string
+                  probability:
+                    type: string
+                    enum: ["low", "medium", "high"]
+                  impact:
+                    type: string
+                    enum: ["low", "medium", "high"]
+                  mitigation:
+                    type: string
+            quality_score:
+              type: number
+              minimum: 0
+              maximum: 100
+              description: 商業模型完整度分數，Gate閘門判斷依據
+    acceptance_criteria:
+      - 價值鏈分析有主要活動與支援活動的劃分依據說明
+      - 收入模式設計有定價策略與目標客群對應的收入來源說明
+      - 成本結構分析按成本類型與行為特徵分別計算說明
+      - 競爭定位策略有參考分析框架與核心假設說明
+      - 財務預測有預測期間與主要假設說明
+      - 商業模式畫布有九個區塊填寫說明
+      - 風險識別與因應策略有風險類型與對應監控指標說明
+      - quality_score為0~100數字；quality_score >= 70 且 未有Critical/High商業風險無緩解方案時才可通過Stage Gate
+    error_handler:
+      retry_strategy: 1
+      max_retry_count: 3
+      fallback_action: mark_human_review
+      retry_prompt: "你的輸出JSON不符合schema，請重新產出嚴格符合schema的純JSON，不要任何額外文字、Markdown與註解"

@@ -1,0 +1,238 @@
+﻿apiVersion: harness.io/v1
+kind: aiSkill
+metadata:
+  name: skill-se-observability
+  identifier: skill_se_observability
+  description: 可觀測性｜監控指標、日誌、追蹤、告警規則、儀表板、SLO/SLA；識別可觀測性阻斷問題供Gate審查
+  tags:
+    - software-engineering
+    - se-workflow
+spec:
+  version: 0.2.0
+  skillDefinition:
+    meta:
+      id: skill-se-observability
+      name: 可觀測性
+      description: 接收部署Artifact，定義指標(metrics)、日誌(logs)、分散式追蹤(traces)、SLO、告警閾值與儀表板；可觀測性Skill，識別監控層阻斷缺陷，輸出observability_spec供後續Stage與Gate閘門判斷
+      version: 0.2.0
+      depends_on:
+        - skill_se_deployment
+      output_artifact_type: observability_spec
+      cross_cutting: false
+    input_schema:
+      type: object
+      properties:
+        project_context:
+          type: object
+          description: Harness全域ProjectContext，包含監控平台、告警渠道、SLO標準、資料保留策略、告警輪班規範
+        user_input:
+          type: string
+          description: 可觀測性補充約束、核心業務指標、告警偏好、人工澄清資訊
+        previous_artifacts:
+          type: array
+          description: 前置Stage產物，包含deployment_spec
+      required: [project_context, previous_artifacts]
+    core_prompt: |
+【Skill ID: skill-se-observability｜職責:可觀測性｜主Skill】
+任務目標:基於部署工件，設計三支柱監控方案（指標、日誌、追蹤）、定義業務SLO/SLI/SLA、設定告警規則與閾值、規劃儀表板與資料保留策略；識別可觀測性阻斷缺陷，輸出固定結構JSON。
+輸入參考:ProjectContext、部署Artifact、人工補充約束。
+
+執行步驟:
+1. 識別核心SLI，建立業務SLO與SLA定義。
+2. 定義系統指標:延遲、錯誤率、吞吐量、飽和度。
+3. 規劃日誌採集範圍、欄位標準、資料保留期。
+4. 設計分散式追蹤範圍、採樣策略。
+5. 建立告警分級規則、閾值、通知渠道與升級機制。
+6. 定義核心儀表板，區分業務儀表板與技術儀表板。
+7. 識別可觀測性風險:監控盲點、告警疲勞、資料採樣不足、日誌遺失。
+8. 識別可觀測阻斷問題blocking_obs_issues:核心業務路徑無監控、關鍵SLO缺少告警、故障無法追溯；僅Critical/High納入阻斷陣列。
+9. 收集可觀測階段待澄清項目放入unresolved_questions，標註target_stakeholder。
+10. 輸出完整risk_list，分級Critical|High|Medium|Low，每筆風險包含描述、影響、緩解方案。
+
+## 強制輸出規則
+1. 僅回傳單一純JSON，禁止前言、額外解釋、markdown、```json程式碼標籤、JSON註解。
+2. 嚴格遵守下面Artifact結構，欄名不可修改，不可隨意增減頂層欄位。
+3. quality_score 評分規則（0~100數值，供Gate閘門使用）
+   - 80~100:SLI/SLO定義完整；三支柱監控覆蓋核心流程；告警分級合理；無Critical/High可觀測阻斷問題；僅少量Medium/Low風險
+   - 70~79:核心業務SLO與故障追溯能力齊全；關鍵告警規則完備；少量採樣/儲存假設待驗證，**無可觀測阻斷問題**，滿足Gate放行門檻
+   - 60~69:主流程監控可用，但次要路徑監控缺失；存在High可觀測風險但有補救方案；無Critical阻斷項
+   - 0~59:存在Critical/High可觀測阻斷缺陷、核心業務路徑完全無監控、故障無法追溯定位；Gate會攔截進入人工審批
+4. blocking_obs_issues:僅放入Critical/High等級可觀測層缺陷，觸發Gate阻斷。Medium/Low風險放至risk_list，不列入阻斷陣列。
+5. unresolved_questions:SRE/開發/產品需澄清的監控疑點，標註target_stakeholder。
+6. risk_list:包含全部可觀測階段風險，level只能使用四個允許字串Critical|High|Medium|Low；每筆風險必須包含描述、影響、緩解方案。
+
+## 輸出Artifact結構
+{
+  "slo_definition": {"sli":[string],"slo":string,"sla":string},
+  "metrics": [{"metric_id":string,"name":string,"type":string,"threshold":string}],
+  "logging": {"scope":[string],"schema":string,"retention":string},
+  "tracing": {"scope":[string],"sampling_strategy":string},
+  "alert_rules": [{"alert_id":string,"severity":"Critical|High|Medium|Low","trigger":string,"notification_channel":string}],
+  "dashboards": [{"dashboard_id":string,"purpose":string,"panel_list":[string]}],
+  "blocking_obs_issues": [{"issue_id":string,"severity":"Critical|High","desc":string}],
+  "unresolved_questions": [{"question":string,"target_stakeholder":string}],
+  "risk_list": [{"risk_desc":string,"level":"Critical|High|Medium|Low","impact":string,"mitigation":string}],
+  "quality_score": number
+}
+
+驗收自檢守則:
+- 核心業務SLI/SLO明確；
+- 主流程具備指標、日誌、追蹤覆蓋；
+- Critical/High告警有升級通知機制；
+- Critical/High可觀測缺陷登記至blocking_obs_issues，作為Gate阻斷依據。
+
+禁止行為:
+- 不實際搭建監控平台，只產生可觀測性規格與告警定義；
+- 禁止輸出JSON以外的任何文字。
+    acceptance_criteria:
+      - 核心業務SLI/SLO定義完整
+      - 主業務路徑具備指標、日誌、追蹤覆蓋
+      - Critical/High告警配置升級通知機制
+      - blocking_obs_issues內severity僅可使用 Critical|High
+      - risk_list內風險等級僅使用 Critical|High|Medium|Low
+      - unresolved_questions 指定target_stakeholder
+      - quality_score為0~100數字；quality_score >=70 且 blocking_obs_issues陣列為空才可通過Stage Gate
+    output_schema:
+      type: object
+      required:
+        - artifact
+        - unresolved_questions
+        - risk_list
+        - quality_score
+      properties:
+        artifact:
+          type: object
+          description: 主可觀測性產物，結構固定
+          properties:
+            slo_definition:
+              type: object
+              properties:
+                sli:
+                  type: array
+                  items:
+                    type: string
+                slo:
+                  type: string
+                sla:
+                  type: string
+            metrics:
+              type: array
+              items:
+                type: object
+                required: [metric_id, name, type, threshold]
+                properties:
+                  metric_id:
+                    type: string
+                  name:
+                    type: string
+                  type:
+                    type: string
+                  threshold:
+                    type: string
+            logging:
+              type: object
+              properties:
+                scope:
+                  type: array
+                  items:
+                    type: string
+                schema:
+                  type: string
+                retention:
+                  type: string
+            tracing:
+              type: object
+              properties:
+                scope:
+                  type: array
+                  items:
+                    type: string
+                sampling_strategy:
+                  type: string
+            alert_rules:
+              type: array
+              items:
+                type: object
+                required: [alert_id, severity, trigger, notification_channel]
+                properties:
+                  alert_id:
+                    type: string
+                  severity:
+                    type: string
+                    enum: ["Critical", "High", "Medium", "Low"]
+                  trigger:
+                    type: string
+                  notification_channel:
+                    type: string
+            dashboards:
+              type: array
+              items:
+                type: object
+                required: [dashboard_id, purpose, panel_list]
+                properties:
+                  dashboard_id:
+                    type: string
+                  purpose:
+                    type: string
+                  panel_list:
+                    type: array
+                    items:
+                      type: string
+            blocking_obs_issues:
+              type: array
+              items:
+                type: object
+                required: [issue_id, severity, desc]
+                properties:
+                  issue_id:
+                    type: string
+                  severity:
+                    type: string
+                    enum: ["Critical", "High"]
+                  desc:
+                    type: string
+            unresolved_questions:
+              type: array
+              items:
+                type: object
+                required: [question, target_stakeholder]
+                properties:
+                  question:
+                    type: string
+                  target_stakeholder:
+                    type: string
+            risk_list:
+              type: array
+              items:
+                type: object
+                required: [risk_desc, level, impact, mitigation]
+                properties:
+                  risk_desc:
+                    type: string
+                  level:
+                    type: string
+                    enum: ["Critical", "High", "Medium", "Low"]
+                  impact:
+                    type: string
+                  mitigation:
+                    type: string
+            quality_score:
+              type: number
+              minimum: 0
+              maximum: 100
+        unresolved_questions:
+          type: array
+          description: 直通Gate的可觀測階段待澄清清單，與artifact內的unresolved_questions保持一致
+        risk_list:
+          type: array
+          description: 直通Gate的可觀測階段風險清單，與artifact內risk_list保持一致
+        quality_score:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: 可觀測方案完整度分數，Gate閘門判斷依據
+    error_handler:
+      retry_strategy: 1
+      max_retry_count: 3
+      fallback_action: mark_human_review
+      retry_prompt: "你的輸出JSON不符合schema，請重新產出嚴格符合schema的純JSON，不要任何額外文字、Markdown與註解"
