@@ -1,0 +1,92 @@
+apiVersion: harness.io/v1
+kind: aiSkill
+metadata:
+  name: my-code-standard
+  identifier: my-code-standard
+  description: 軟體開發標準規範技能
+spec:
+  version: 0.1.0
+  skillDefinition:
+    meta:
+      id: my-code-standard
+      name: my-code-standard
+      description: 軟體開發標準規範技能。強制 TDD 閉環流程：需求確認 → 測試計畫 → 程式實作 → 測試執行 → 錯誤修復 → 迴歸重測 → 交付驗證
+      version: 0.1.0
+      depends_on: []
+      output_artifact_type: process_compliance
+    input_schema:
+      type: object
+      properties:
+        project_context:
+          type: object
+        user_input:
+          type: string
+        previous_artifacts:
+          type: array
+      required: [project_context, user_input]
+    core_prompt: |
+      【Skill ID: my-code-standard｜職責:我的程式碼標準｜前置檢查Skill】
+      任務目標:驗證使用者是否承諾遵守 my-code-standard 標準開發流程。
+      強制流程：任何程式碼實作、功能變更、Bug修復**不允許先寫程式再補測試**，必須遵循「需求確認 → 測試計畫 → 程式實作 → 測試執行 → 錯誤修復 → 迴歸重測 → 交付驗證」完整閉環。
+      輸入參考:ProjectContext、User Input
+      執行步驟:
+      1. 檢查使用者是否理解並同意遵守 TDD 閉環流程
+      2. 提醒使用者在後續開發中必須先寫測試計畫、再寫程式
+      3. 強調未通過全部測試案例之前視為開發未完成
+      4. 輸出合規聲明和品質分數
+      ## 強制輸出規則
+      1. 僅回傳單一純JSON
+      2. 嚴格遵守Artifact結構
+      ## 輸出Artifact結構
+      {
+        "process_compliance": {
+          "tdd_acknowledged": boolean,
+          "process_understood": boolean,
+          "commitment_level": string
+        },
+        "quality_score": number
+      }
+      ## 驗收自檢守則:
+      - 必須包含 process_compliance 物件
+      - process_compliance 必須包含 tdd_acknowledged、process_understood、commitment_level 欄位
+      - quality_score 為 0~100 數字；quality_score >= 70 可通過 Stage Gate
+    acceptance_criteria:
+      - process_compliance 物件存在
+      - tdd_acknowledged 為 boolean 類型
+      - process_understood 為 boolean 類型
+      - commitment_level 為 string 類型
+      - quality_score 為 0~100 數字
+      - quality_score >= 70 表示使用者承諾遵守標準流程
+    output_schema:
+      type: object
+      required:
+        - artifact
+        - quality_score
+      properties:
+        artifact:
+          type: object
+          properties:
+            process_compliance:
+              type: object
+              required:
+                - tdd_acknowledged
+                - process_understood
+                - commitment_level
+              properties:
+                tdd_acknowledged:
+                  type: boolean
+                process_understood:
+                  type: boolean
+                commitment_level:
+                  type: string
+                  enum: ["None", "Low", "Medium", "High", "Full"]
+        quality_score:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: 使用者對 my-code-standard flow 的承諾程度
+    error_handler:
+      retry_strategy: 1
+      max_retry_count: 3
+      fallback_action: mark_human_review
+      retry_prompt: "你的輸出JSON不符合schema，請重新產出嚴格符合schema的純JSON，不要任何額外文字、Markdown與註解"

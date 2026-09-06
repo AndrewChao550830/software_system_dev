@@ -85,6 +85,7 @@ spec:
       properties:
         artifact:
           type: object
+          description: 系統邊界分析產物
           properties:
             context_diagram:
               type: object
