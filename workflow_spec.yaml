@@ -1,0 +1,74 @@
+# SE Software Engineering Multi-Agent Workflow DAG Definition
+workflow_id: se_end_to_end
+name: Software Engineering End-to-End Multi-Agent
+description: Requirements analysis -> modeling -> architecture -> implementation -> testing -> deployment -> observability -> iteration; each stage has horizontal audit + gate
+version: 0.1.0
+
+# Horizontal Skill: executed in parallel after each stage
+# Already converted to snake_case, matches main.py skill loading
+cross_cutting_skills:
+  - skill_id: skill_se_cost_control
+  - skill_id: skill_se_sec_compliance
+
+# Gate rules, verified after each stage ends
+gate:
+  quality_score_min: 70
+  block_if_critical_vuln: true
+  human_approval: true # If not passed, pause awaiting human input
+
+# Stage main process sequence
+stages:
+  - stage_id: requirement
+    skill_id: skill_se_requirement
+    name: Requirement Understanding
+    depends_on: []
+
+  - stage_id: business_model
+    skill_id: skill_se_business_model
+    name: Business Modeling
+    depends_on: [requirement]
+
+  - stage_id: system_boundary
+    skill_id: skill_se_system_boundary
+    name: System Boundary C4 Context
+    depends_on: [business_model]
+
+  - stage_id: tech_design
+    skill_id: skill_se_tech_design
+    name: Technical Solution & ADR
+    depends_on: [business_model, system_boundary]
+
+  - stage_id: data_state_design
+    skill_id: skill_se_data_state_design
+    name: Data Structure & State Machine Design
+    depends_on: [business_model, tech_design]
+
+  - stage_id: code_implementation
+    skill_id: skill_se_code_implementation
+    name: Code Skeleton Implementation
+    depends_on: [tech_design, data_state_design]
+
+  - stage_id: code_renderer
+    skill_id: skill_code_renderer
+    name: Code Rendering & Generation
+    depends_on: [code_implementation]
+
+  - stage_id: test_validation
+    skill_id: skill_se_test_validation
+    name: Test Case Design
+    depends_on: [requirement, code_renderer]
+
+  - stage_id: deployment
+    skill_id: skill_se_deployment
+    name: Deployment Plan
+    depends_on: [tech_design, test_validation]
+
+  - stage_id: observability
+    skill_id: skill_se_observability
+    name: Observability Design
+    depends_on: [tech_design, deployment]
+
+  - stage_id: feedback_iteration
+    skill_id: skill_se_feedback_iteration
+    name: Feedback Iteration Backlog
+    depends_on: [observability]
