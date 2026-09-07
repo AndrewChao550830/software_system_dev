@@ -1,0 +1,293 @@
+# harness_audit_pipeline_all_8skills_with_deps.yaml
+pipeline:
+  name: Full Compliance Audit Pipeline - 8 Standard Skill Suite (With Stage Dependencies)
+  identifier: full_compliance_audit_8skills_dep
+  projectIdentifier: corp_governance
+  orgIdentifier: holding_group
+  tags:
+    compliance: "true"
+    audit: "true"
+    skill: "true"
+  description: >
+    循序執行全套8項標準稽核Skill，使用Harness原生dependsOn定義Stage依賴，嚴格依序執行
+    CMMI Dev / CMMI SVC / ISO27001 / OWASP ASVS+Top10 / ISO25010 / IEC62304 / COSO / COBIT2019
+    最後執行 Consolidator Skill 彙整全部稽核Artifact，輸出總合規差距彙總報告
+  properties:
+    ci:
+      codebase:
+        build:
+          type: "Local"
+  variables:
+    - name: org_name
+      type: String
+      value: "揚沛投資控股"
+    - name: audit_scope_global
+      type: String
+      value: "研發、資訊系統與財務營運流程"
+    - name: evidence_root_folder
+      type: String
+      value: "./audit_evidence"
+    - name: artifact_output_root
+      type: String
+      value: "./audit_artifacts"
+    - name: dry_run_global
+      type: Boolean
+      value: true
+    - name: fail_pipeline_on_audit_failure
+      type: Boolean
+      value: false
+  stages:
+    # Stage 1: CMMI DEV（第一個Stage，無依賴）
+    - stage:
+        name: 01_CMMI_DEV_Process_Audit
+        identifier: s01_cmmi_dev_audit
+        description: CMMI 開發模型流程稽核
+        type: Custom
+        spec:
+          execution:
+            steps:
+              - step:
+                  name: Execute Skill: skill_cmmi_dev_spec
+                  identifier: exec_skill_cmmi_dev
+                  type: AiSkill
+                  spec:
+                    skillRef: skill_cmmi_dev_spec
+                    inputs:
+                      org_info:
+                        org_name: ${org_name}
+                        audit_scope: ${audit_scope_global}
+                      evidence_folder: ${evidence_root_folder}/cmmi_dev
+                      dry_run: ${dry_run_global}
+                    outputArtifactPath: ${artifact_output_root}/01_cmmi_dev
+          failureStrategy:
+            action: Continue
+            failOnFailure: ${fail_pipeline_on_audit_failure}
+
+    # Stage 2: CMMI SVC，依賴 s01_cmmi_dev_audit
+    - stage:
+        name: 02_CMMI_SVC_Process_Audit
+        identifier: s02_cmmi_svc_audit
+        dependsOn:
+          - s01_cmmi_dev_audit
+        description: CMMI 服務模型流程稽核
+        type: Custom
+        spec:
+          execution:
+            steps:
+              - step:
+                  name: Execute Skill: skill_cmmi_svc_spec
+                  identifier: exec_skill_cmmi_svc
+                  type: AiSkill
+                  spec:
+                    skillRef: skill_cmmi_svc_spec
+                    inputs:
+                      org_info:
+                        org_name: ${org_name}
+                        audit_scope: ${audit_scope_global}
+                      evidence_folder: ${evidence_root_folder}/cmmi_svc
+                      dry_run: ${dry_run_global}
+                    outputArtifactPath: ${artifact_output_root}/02_cmmi_svc
+          failureStrategy:
+            action: Continue
+            failOnFailure: ${fail_pipeline_on_audit_failure}
+
+    # Stage3 ISO27001 ISMS，依賴 s02_cmmi_svc_audit
+    - stage:
+        name: 03_ISO27001_ISMS_Audit
+        identifier: s03_iso27001_audit
+        dependsOn:
+          - s02_cmmi_svc_audit
+        description: ISO27001:2022 ISMS資安管理體系稽核
+        type: Custom
+        spec:
+          execution:
+            steps:
+              - step:
+                  name: Execute Skill: skill_iso27001_ism_management_spec
+                  identifier: exec_skill_iso27001
+                  type: AiSkill
+                  spec:
+                    skillRef: skill_iso27001_ism_management_spec
+                    inputs:
+                      org_info:
+                        org_name: ${org_name}
+                        audit_scope: ${audit_scope_global}
+                      scope_filter: ["context","leadership","planning","support","operation","performance","improvement"]
+                      evidence_folder: ${evidence_root_folder}/iso27001
+                      dry_run: ${dry_run_global}
+                    outputArtifactPath: ${artifact_output_root}/03_iso27001
+          failureStrategy:
+            action: Continue
+            failOnFailure: ${fail_pipeline_on_audit_failure}
+
+    # Stage4 OWASP ASVS + Top10，依賴 s03_iso27001_audit
+    - stage:
+        name: 04_OWASP_ASVS_Top10_Audit
+        identifier: s04_owasp_audit
+        dependsOn:
+          - s03_iso27001_audit
+        description: OWASP ASVS L2 + Top10應用程式安全驗證稽核
+        type: Custom
+        spec:
+          execution:
+            steps:
+              - step:
+                  name: Execute Skill: skill_owasp_asvs_top10_audit_spec
+                  identifier: exec_skill_owasp
+                  type: AiSkill
+                  spec:
+                    skillRef: skill_owasp_asvs_top10_audit_spec
+                    inputs:
+                      app_info:
+                        app_name: "企業核心應用與API平台"
+                        asvs_level: "L2"
+                      scope_filter: ["auth","session","accesscontrol","crypto","inputoutput","api"]
+                      evidence_folder: ${evidence_root_folder}/owasp
+                      dry_run: ${dry_run_global}
+                    outputArtifactPath: ${artifact_output_root}/04_owasp
+          failureStrategy:
+            action: Continue
+            failOnFailure: ${fail_pipeline_on_audit_failure}
+
+    # Stage5 ISO25010，依賴 s04_owasp_audit
+    - stage:
+        name: 05_ISO25010_Quality_Audit
+        identifier: s05_iso25010_audit
+        dependsOn:
+          - s04_owasp_audit
+        description: ISO/IEC 25010軟體產品品質模型稽核
+        type: Custom
+        spec:
+          execution:
+            steps:
+              - step:
+                  name: Execute Skill: skill_iso25010_quality_audit_spec
+                  identifier: exec_skill_iso25010
+                  type: AiSkill
+                  spec:
+                    skillRef: skill_iso25010_quality_audit_spec
+                    inputs:
+                      product_info:
+                        product_name: "企業核心軟體平台"
+                        product_type: "backend"
+                      scope_filter: ["functional","performance","reliability","security","maintainability"]
+                      evidence_folder: ${evidence_root_folder}/iso25010
+                      dry_run: ${dry_run_global}
+                    outputArtifactPath: ${artifact_output_root}/05_iso25010
+          failureStrategy:
+            action: Continue
+            failOnFailure: ${fail_pipeline_on_audit_failure}
+
+    # Stage6 IEC62304，依賴 s05_iso25010_audit
+    - stage:
+        name: 06_IEC62304_MedicalSW_Audit
+        identifier: s06_iec62304_audit
+        dependsOn:
+          - s05_iso25010_audit
+        description: IEC62304醫療裝置軟體生命週期稽核
+        type: Custom
+        spec:
+          execution:
+            steps:
+              - step:
+                  name: Execute Skill: skill_iec62304_medical_sw_spec
+                  identifier: exec_skill_iec62304
+                  type: AiSkill
+                  spec:
+                    skillRef: skill_iec62304_medical_sw_spec
+                    inputs:
+                      medsw_info:
+                        sw_name: "醫療監測嵌入式軟體"
+                        sw_safety_class: "B"
+                      scope_filter: ["planning","requirement","design","verification","risk","config"]
+                      evidence_folder: ${evidence_root_folder}/iec62304
+                      dry_run: ${dry_run_global}
+                    outputArtifactPath: ${artifact_output_root}/06_iec62304
+          failureStrategy:
+            action:
+              action: Continue
+              failOnFailure: ${fail_pipeline_on_audit_failure}
+
+    # Stage7 COSO，依賴 s06_iec62304_audit
+    - stage:
+        name: 07_COSO_InternalControl_Audit
+        identifier: s07_coso_audit
+        dependsOn:
+          - s06_iec62304_audit
+        description: COSO 2013內部控制框架稽核
+        type: Custom
+        spec:
+          execution:
+            steps:
+              - step:
+                  name: Execute Skill: skill_coso_internal_control_spec
+                  identifier: exec_skill_coso
+                  type: AiSkill
+                  spec:
+                    skillRef: skill_coso_internal_control_spec
+                    inputs:
+                      org_info:
+                        org_name: ${org_name}
+                        audit_business_scope: ${audit_scope_global}
+                      scope_filter: ["control_environment","risk_assessment","control_activities","info_communication","monitoring"]
+                      evidence_folder: ${evidence_root_folder}/coso
+                      dry_run: ${dry_run_global}
+                    outputArtifactPath: ${artifact_output_root}/07_coso
+          failureStrategy:
+            action: Continue
+            failOnFailure: ${fail_pipeline_on_audit_failure}
+
+    # Stage8 COBIT2019，依賴 s07_coso_audit
+    - stage:
+        name: 08_COBIT2019_ITGovernance_Audit
+        identifier: s08_cobit_audit
+        dependsOn:
+          - s07_coso_audit
+        description: COBIT2019 IT治理稽核
+        type: Custom
+        spec:
+          execution:
+            steps:
+              - step:
+                  name: Execute Skill: skill_cobit_it_governance_spec
+                  identifier: exec_skill_cobit
+                  type: AiSkill
+                  spec:
+                    skillRef: skill_cobit_it_governance_spec
+                    inputs:
+                      org_info:
+                        org_name: ${org_name}
+                        business_priority: "數位平台擴展與合規管控"
+                      scope_filter: ["edm","apo","bai","dss"]
+                      evidence_folder: ${evidence_root_folder}/cobit
+                      dry_run: ${dry_run_global}
+                    outputArtifactPath: ${artifact_output_root}/08_cobit
+          failureStrategy:
+            action: Continue
+            failOnFailure: ${fail_pipeline_on_audit_failure}
+
+    # Stage9 Final Consolidator，依賴最後一支稽核Stage s08_cobit_audit
+    - stage:
+        name: 09_Final_Audit_Summary_Aggregation
+        identifier: s09_final_summary
+        dependsOn:
+          - s08_cobit_audit
+        description: 彙整全部8套稽核Artifact，輸出總合規差距報告
+        type: Custom
+        spec:
+          execution:
+            steps:
+              - step:
+                  name: Generate Consolidated Audit Summary
+                  identifier: exec_summary_agg
+                  type: AiSkill
+                  spec:
+                    skillRef: skill_audit_consolidator_spec
+                    inputs:
+                      artifact_base_path: ${artifact_output_root}
+                      org_name: ${org_name}
+                      dry_run: ${dry_run_global}
+                    outputArtifactPath: ${artifact_output_root}/99_final_consolidated
+          failureStrategy:
+            action: Continue
+            failOnFailure: false
