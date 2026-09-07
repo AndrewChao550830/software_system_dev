@@ -22,42 +22,32 @@ spec:
       properties:
         project_context:
           type: object
-          description: Harness全域ProjectContext，包含品質標準、測試環境、部署流程、驗收標準
         user_input:
           type: string
-          description: 測試需求補充、特定場景需求、合規驗證需求與效能基準
         previous_artifacts:
           type: array
-          description: 前置Stage產物，包含requirement和code_implementation
       required: [project_context, previous_artifacts]
     core_prompt: |
       【Skill ID: skill_se_test_validation｜職責:測試驗證｜主Skill】
-      任務目標:基於需求與設計Artifact，制定完整測試策略、設計測試案例、生成自動化測試腳本、定義品質度量標準與產出測試報告；輸出完整測試驗證結構JSON。
-
-      輸入參考:需求Artifact、程式實作Artifact、ProjectContext、測試需求補充。
-
+      任務目標:基於需求與設計Artifact，制定完整測試策略、設計測試案例、生成自動化測試腳本、定義品質度量標準與產出測試報告；輸出完整測試驗證結構JSON.
+      輸入參考:需求Artifact、程式實作Artifact、ProjectContext、測試需求補充.
       執行步驟:
       1. 測試策略設計：根據需求複雜度與風險評估，制定單元測試、整合測試、系統測試與驗收測試策略。
       2. 測試案例撰寫：根據需求規格與使用者故事，設計正向測試、異常測試、邊界值測試與壓力測試案例。
       3. 自動化腳本生成：選擇適當測試框架，生成可執行的測試腳本，包含測試資料準備與環境設置。
       4. 品質度量與報告：定義線覆蓋率、缺陷密度、平均修復時間等品質指標，設計測試報告格式。
       5. 整合非功能測試：安全測試、效能測試、可用性測試與相容性測試納入整體測試計畫。
-      6. 輸出完整risk_list，分級Critical|High|Medium|Low，每筆風險包含描述、影響、緩解方案。
-
+      6. 輸出完整risk_list，分級Critical|High|Medium|Low，每筆風險包含描述、影響、緩解方案.
       ## 強制輸出規則
       1. 僅回傳單一純JSON，禁止前言、額外解釋、markdown、```json程式碼標籤、JSON註解。
       2. 嚴格遵守下面Artifact結構，欄名不可修改，不可隨意增減頂層欄位。
-      3. quality_score 評分規則（0~100數值，供Gate閘門使用）
-         - 80~100:測試策略完整覆蓋需求；測試案例設計符合標準；自動化腳本可執行；品質度量具體可量化；無Critical/High風險
-         - 70~79:主要測試策略已制定；核心需求有測試案例；自動化腳本有主要功能；品質度量有主要指標；識別主要測試風險；少量Medium/Low風險；滿足Gate放行門檻
-         - 60~69:測試策略有主要方向但缺少次要類型；測試案例存在覆蓋缺口；自動化腳本不完整；品質度量規則不完整；存在High風險但有緩解方案；無Critical阻斷項
-         - 0~59:測試策略缺失或不適當；測試案例設計不符合需求；自動化腳本無法執行；品質度量缺失；存在Critical/High測試風險無緩解方案；Gate會攔截進入人工審批
-      4. 測試策略必須說明測試級別與對應覆蓋目標。
-      5. 測試案例必須包含測試步驟、預期結果與實際結果欄位。
-      6. 自動化腳本必須可在CI/CD管道中執行並產出機器可讀結果。
-      7. 品質度量必須與業務目標相關聯並具備歷史基準線。
-      8. 測試報告必須包含執行摘要、詳細發現與改進建議。
-
+      3. quality_score 評分規則（0~100數值，供Gate閘門使用）**必須遵守**：
+         - 0 分：完全空白，無任何有效輸出
+         - 1~39：少量內容，核心資訊大量缺失，無法進入下一階段
+         - 40~69：內容存在，但關鍵資訊不足，Gate攔截人工審查
+         - 70~84：核心內容完整，少量次要缺點，可放行
+         - 85~100：產物完備，包含風險、邊界、例外場景考量
+         - 必須在artifact中新增 `score_rationale` 欄位，說明評分理由與扣分項目.
       ## 輸出Artifact結構
       {
         "test_strategy": [{"level":string,"coverage":string,"techniques":[string]}],
@@ -66,21 +56,9 @@ spec:
         "quality_metrics": [{"metric":string,"formula":string,"baseline":string,"target":string}],
         "non_functional_tests": [{"test_type":string,"scope":string,"tools":[string]}],
         "risk_list": [{"risk_desc":string,"level":"Critical|High|Medium|Low","impact":string,"mitigation":string}],
-        "quality_score": number
+        "quality_score": number,
+        "score_rationale": string
       }
-
-      驗收自檢守則:
-      - 測試策略必須說明測試級別與對應覆蓋目標
-      - 測試案例必須包含測試步驟、預期結果與實際結果欄位
-      - 自動化腳本必須可在CI/CD管道中執行
-      - 品質度量必須與業務目標相關聯
-      - 非功能測試必須明確說明範圍與工具
-
-      禁止行為:
-      - 不做缺陷追蹤系統選型或流程設計
-      - 不做測試環境架構設計或工具選型
-      - 不做發布決策標準或佈署策略設計
-      - 禁止輸出JSON以外的任何文字
     acceptance_criteria:
       - 測試策略有明確測試級別與對應覆蓋目標
       - 測試案例有測試步驟、預期結果與實際結果欄位
@@ -88,6 +66,7 @@ spec:
       - 品質度量有業務目標相關聯的指標
       - 非功能測試有範圍與工具說明
       - risk_list風險等級使用 Critical|High|Medium|Low
+      - 必須包含 score_rationale 欄位
       - quality_score為0~100數字；quality_score >= 70可通過Stage Gate
     output_schema:
       type: object
@@ -195,12 +174,16 @@ spec:
           type: array
           description: 直通Gate的測試驗證階段風險清單，與artifact內risk_list保持一致
     acceptance_criteria:
-      - 功能測試覆蓋所有核心功能點
-      - 非功能測試涵蓋效能、安全、相容性等關鍵面向
-      - 風險清單完整記錄所有識別風險及對應等級
+      - 測試策略有明確測試級別與對應覆蓋目標
+      - 測試案例有測試步驟、預期結果與實際結果欄位
+      - 自動化腳本有執行入口與依賴列表
+      - 品質度量有業務目標相關聯的指標
+      - 非功能測試有範圍與工具說明
+      - risk_list風險等級使用 Critical|High|Medium|Low
+      - 必須包含 score_rationale 欄位
       - quality_score為0~100數字；quality_score >= 70 且 未有Critical/High測試風險無緩解方案時才可通過Stage Gate
     error_handler:
       retry_strategy: 1
       max_retry_count: 3
       fallback_action: mark_human_review
-      retry_prompt: "你的輸出JSON不符合schema，請重新產出嚴格符合schema的純JSON，不要任何額外文字、Markdown與註解"
+      retry_prompt: "你的輸出JSON不符合schema，請重新產出嚴kt符合schema的純JSON，不要任何額外文字、Markdown與註解"

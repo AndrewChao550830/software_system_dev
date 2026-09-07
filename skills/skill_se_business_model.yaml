@@ -15,20 +15,17 @@ spec:
       name: 商業模型
       description: 基於所有前置Artifact，執行價值鏈與收入模式設計、分析成本結構與制定競爭策略；輸出商業模型供後續Stage與Gate閘門判斷
       version: 0.2.0
-      depends_on: [skill_se_requirement]  # This will be updated based on context in pipeline
+      depends_on: [skill_se_requirement]
       output_artifact_type: business_model
     input_schema:
       type: object
       properties:
         project_context:
           type: object
-          description: Harness全域ProjectContext，包含組織戰略目標、市場定位與產品線規劃
         user_input:
           type: string
-          description: 特別關注的商業模式面向或假設
         previous_artifacts:
           type: array
-          description: 所有前置Stage產物，特别是需求理解產物
       required: [project_context]
     core_prompt: |
       【Skill ID: skill_se_business_model｜職責:商業模型｜主Skill】
@@ -43,21 +40,16 @@ spec:
       6. 財務預測與敏感性分析：制定 3-5 年收入、成本與現金流預測，執行關鍵假設敏感性測試。
       7. 風險識別與因應策略：識別市場、技術與執行風險，制定因應方案與監控指標。
       8. 輸出完整商業模式結構JSON。
-
       ## 強制輸出規則
       1. 僅回傳單一純JSON，禁止前言、額外解釋、markdown、```json程式碼標籤、JSON註解。
       2. 嚴格遵守下面Artifact結構，欄名不可修改，不可隨意增減頂層欄位。
-      3. quality_score 評分規則（0~100數值，供Gate閘門使用）
-         - 80~100:價值鏈分析完整；收入模式有明確假設與驗證；成本結構有詳細分項；競爭策略有清晰差異化點；財務預測合理；無Critical/High風險
-         - 70~79:主要價值鏈已分析；收入模式有主要假設說明；成本結構有主要分項；競爭策略有主要方向；財務預測有主要計算步驟；識別主要商業風險；少量Medium/Low風險；滿足Gate放行門檻
-         - 60~69:價值鏈分析有主要方向但缺少次要項目；收入模式存在主要假設但缺少驗證；成本結構存在估算缺口；競爭策略缺少詳細說明；存在High風險但有緩解方案；無Critical阻斷項
-         - 0~59:價值鏈分析缺失或錯誤；收入模式假設不足；成本結構缺失；競爭策略缺失；存在Critical/High商業風險無緩解方案；Gate會攔截進入人工審批
-      4. 價值鏈分析必須說明主要活動與支援活動的劃分依據。
-      5. 收入模式設計必須說明定價策略與目標客群對應的收入來源。
-      6. 成本結構分析必須按成本類型與行為特徵分別計算。
-      7. 競爭定位策略必須說明參考分析框架與核心假設。
-      8. 財務預測必須說明預測期間與主要假設說明。
-
+      3. quality_score 評分規則（0~100數值，供Gate閘門使用）**必須遵守**：
+         - 0 分：完全空白，無任何有效輸出
+         - 1~39：少量內容，核心資訊大量缺失，無法進入下一階段
+         - 40~69：內容存在，但關鍵資訊不足，Gate攔截人工審查
+         - 70~84：核心內容完整，少量次要缺點，可放行
+         - 85~100：產物完備，包含風險、邊界、例外場景考量
+         - 必須在artifact中新增 `score_rationale` 欄位，說明評分理由與扣分項目.
       ## 輸出Artifact結構
       {
         "value_chain_analysis": {"primary_activities":[string],"support_activities":[string]},
@@ -69,21 +61,9 @@ spec:
         "assumptions": [{"area":string,"assumption":string,"rationale":string}],
         "sensitivity_analysis": [{"variable":string,"base_case":string,"change_percent":string,"impact":string}],
         "business_risks": [{"risk":string,"probability":"low|medium|high","impact":"low|medium|high","mitigation":string}],
+        "score_rationale": string,
         "quality_score": number
       }
-
-      驗收自檢守則:
-      - 價值鏈分析必須說明主要活動與支援活動的劃分依據
-      - 收入模式設計必須說明定價策略與目標客群對應的收入來源
-      - 成本結構分析必須按成本類型與行為特徵分別計算
-      - 競爭定位策略必須說明參考分析框架與核心假設
-      - 財務預測必須說明預測期間與主要假設說明
-
-      禁止行為:
-      - 不做實體製造或供應鏈深度分析
-      - 不做員工股權激勵或長期現金補償設計
-      - 不做併購整合或資產重組評估
-      - 禁止輸出JSON以外的任何文字
     acceptance_criteria:
       - 價值鏈分析有主要活動與支援活動的劃分依據說明
       - 收入模式設計有定價策略與目標客群對應的收入來源說明
@@ -93,6 +73,7 @@ spec:
       - 商業模式畫布有九個區塊填寫說明
       - 財務預測與敏感性分析有預測期間與主要假設說明
       - 風險識別與因應策略有風險類型與對應監控指標說明
+      - 必須包含 score_rationale 欄位
       - quality_score為0~100數字；quality_score >= 70 且 未有Critical/High商業風險無緩解方案時才可通過Stage Gate
     output_schema:
       type: object
@@ -231,6 +212,9 @@ spec:
                     enum: ["low", "medium", "high"]
                   mitigation:
                     type: string
+            score_rationale:
+              type: string
+              description: 質量分數的扣分明細，說明為何未得到更高分數
             quality_score:
               type: number
               minimum: 0
@@ -243,7 +227,9 @@ spec:
       - 競爭定位策略有參考分析框架與核心假設說明
       - 財務預測有預測期間與主要假設說明
       - 商業模式畫布有九個區塊填寫說明
+      - 財務預測與敏感性分析有預測期間與主要假설說明
       - 風險識別與因應策略有風險類型與對應監控指標說明
+      - 必須包含 score_rationale 欄位
       - quality_score為0~100數字；quality_score >= 70 且 未有Critical/High商業風險無緩解方案時才可通過Stage Gate
     error_handler:
       retry_strategy: 1

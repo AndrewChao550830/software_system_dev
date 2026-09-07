@@ -1,0 +1,210 @@
+apiVersion: harness.io/v1
+kind: aiSkill
+metadata:
+  name: 相依元件安全掃描
+  identifier: skill_dep_security
+  description: 執行相依元件漏洞掃描（npm、pip、 poetry 等），並將 Critical/High 級漏洞回傳給 Gate 作為阻斷依據
+  tags:
+    - software-engineering
+    - se-workflow
+    - security
+    - dependency-scan
+spec:
+  version: 0.1.0
+  skillDefinition:
+    meta:
+      id: skill_dep_security
+      name: 依賴元件安全掃描
+      version: 0.1.0
+      depends_on: []  # 此 Skill 不依賴其他 Stage 的產出，僅需專案環境
+      output_artifact_type: dependency_scan_result
+    input_schema:
+      type: object
+      properties:
+        project_context:
+          type: object
+          description: Harness 全域 ProjectContext，可包含語言、建置工具、禁用掃描的白名單等資訊
+        user_input:
+          type: string
+          description: 額外的掃描參數或指定要掃描的專案子目錄（相對於工作目錄）
+        previous_artifacts:
+          type: array
+          description: 可用來取得前階段產出的程式碼結構（例如專案類型），以決定使用哪種掃描工具
+      required: [project_context]
+    core_prompt: |
+      【Skill ID: skill_dep_security｜職責:相依元件安全掃描｜橫切 Skill】
+      任務目標:根據專案使用的語言與建置工具，自動選擇適當的相依元件掃描工具，執行掃描並回傳漏洞清單。掃描結果必須符合下列 Artifact 結構，以便 Gate 檢查。
+
+      輸入參考:
+        - project_context: 可包含 `language` (例如 "nodejs", "python"), `build_tool` (例如 "npm", "yarn", "pip", "poetry") 等欄位。
+        - user_input: 可指定 `scan_path` (相對路徑) 或額外的掃描參數（如 `--audit-level=high`）。
+        - previous_artifacts: 若存在程式碼實作或渲染階段的 Artifact，可從中讀取 `project_structure` 或 `technology_stack` 來確定語言與建置方式。
+
+      執行步驟:
+        1. **偵測語言與建置工具**
+           - 優先讀取 project_context.language / project_context.build_tool
+           - 若未提供，則嘗試從 previous_artifacts 中的程式碼實作或渲染 Artifact 推斷（例如專案結構裡是否有 package.json、requirements.txt、pyproject.toml 等）。
+           - 無法偵測時，預設嘗試以下常見檔案的存在：
+               * package.json → npm/yarn
+               * requirements.txt 或 setup.py → pip
+               * Pipfile → pipenv
+               * poetry.lock 或 pyproject.toml → poetry
+        2. **選擇對應的掃描指令**
+           - Node.js (npm/yarn): `npm audit --json` 或 `yarn audit --json`
+           - Python (pip): `pip list --outdated --format=json` 再交給 `pip-audit` 或 `safety check --json`
+           - Python (pipenv): `pipenv check --json`
+           - Python (poetry): `poetry check --format json`
+           - 其他語言自行擴充（此 Skill 以 Node.js 與 Python 為主要示範）
+        3. **執行掃描並捕獲 JSON 輸出**
+           - 若掃描工具不可用，則回傳空結果並將 quality_score 設為 0，並說明原因。
+        4. **解析掃描結果，萃取 Critical/High 漏洞**
+           - 依據不同工具的輸出格式，統一成以下結構：
+               {
+                 "vuln_id": string,
+                 "severity": "Critical|High|Medium|Low",
+                 "description": string
+               }
+        5. **組裝 Artifact**
+           - `artifact`: 放置完整掃描結果（原始 JSON）供後階段除錯使用。
+           - `blocking_vulnerabilities`: 僅包含 severity 為 Critical 或 High 的項目（Gate 會據此決定是否阻斷）。
+           - `risk_list`: 包含所有掃描出的漏洞（含 Medium/Low），每筆加上簡單的緩解建議（如「升級至安全版本」）。
+           - `unresolved_questions`: 若掃描工具缺失或設定問題，則記錄說明。
+           - `quality_score`: 依照以下規則計算（0~100）：
+               * 100分：無任何漏洞
+               * 80~99：僅有 Medium/Low 漏洞，每種減 5 分（Upper bound 80）
+               * 60~79：有 High 漏洞但無 Critical，每項 High 減 10 分，每項 Medium 減 5 分
+               * 0~59：有任意 Critical 漏洞，直接設為 0（或依數量再減分）
+               * 具體公式：`score = max(0, 100 - (critical_count * 20) - (high_count * 10) - (medium_count * 5))`
+           - 若掃描工具執行失敗，quality_score 設為 0，並把失敗訊息放進 `unresolved_questions`。
+        6. **強制輸出規則**
+           - 僅回傳單一純JSON，禁止前言、額外解釋、markdown、```json 程式碼標籤、JSON 註解。
+           - 必須嚴格遵守下面的 Artifact 結構。
+
+      ## 輸出Artifact結構
+      {
+        "artifact": {
+          "scan_tool": string,          // 實際使用的掃描工具名称（如 "npm audit", "pip-audit"）
+          "scan_command": string,       // 執行的完整指令
+          "scan_output": any,           // 原始掃描工具回傳的 JSON（或文字）
+          "dependency_files_detected": [string] // 實際偵測到的相依元件檔案清單（如 ["package.json"]）
+        },
+        "blocking_vulnerabilities": [
+          {
+            "vuln_id": string,
+            "severity": "Critical|High",
+            "description": string
+          }
+        ],
+        "risk_list": [
+          {
+            "vuln_id": string,
+            "severity": "Critical|High|Medium|Low",
+            "description": string,
+            "mitigation": string   // 建議的修復方式（例如 "升 lodash 至 4.17.21"）
+          }
+        ],
+        "unresolved_questions": [
+          {
+            "question": string,
+            "responsible_team": string
+          }
+        ],
+        "quality_score": number   // 0~100，依上述規則計算
+      }
+
+      ## 驗收自檢守則:
+      - 必須包含 artefact、blocking_vulnerabilities、risk_list、unresolved_questions、quality_score 五個頂層欄位。
+      - blocking_vulnerabilities 必須是陣列，每筆必須含有 vuln_id、severity ("Critical"|"High")、description。
+      - risk_list 必須是陣列，每筆必須含有 vuln_id、severity ("Critical"|"High"|"Medium"|"Low")、description、mitigation。
+      - quality_score 必須是 0~100 的數字。
+      - 若掃描工具不存在或執行失敗，則 quality_score 為 0，且 unresolved_questions 必須說明原因。
+    acceptance_criteria:
+      - artifact 物件存在
+      - blocking_vulnerabilities 為陣列
+      - risk_list 為陣列
+      - unresolved_questions 為陣列
+      - quality_score 為 number 且範圍在 0~100
+      - 若專案偵測到相依元件檔案（package.json、requirements.txt 等），則掃描工具應該成功執行且 scan_output 不為空（除非工具真的不可用）。
+    output_schema:
+      type: object
+      required:
+        - artifact
+        - blocking_vulnerabilities
+        - risk_list
+        - unresolved_questions
+        - quality_score
+      properties:
+        artifact:
+          type: object
+          description: 掃描工具的完整輸出與偵測資訊
+          properties:
+            scan_tool:
+              type: string
+            scan_command:
+              type: string
+            scan_output:
+              type: string   # 為方便，這裡使用字串呈現 JSON；實際執行時可保留原始 JSON
+            dependency_files_detected:
+              type: array
+              items:
+                type: string
+        blocking_vulnerabilities:
+          type: array
+          description: Critical/High 級別的阻斷漏洞，Gate 會依此決定是否暫停流程
+          items:
+            type: object
+            required:
+              - vuln_id
+              - severity
+              - description
+            properties:
+              vuln_id:
+                type: string
+              severity:
+                type: string
+                enum: ["Critical", "High"]
+              description:
+                type: string
+        risk_list:
+          type: array
+          description: 所有掃描出的漏洞（含 Medium/Low），每筆附帶簡單緩解建議
+          items:
+            type: object
+            required:
+              - vuln_id
+              - severity
+              - description
+              - mitigation
+            properties:
+              vuln_id:
+                type: string
+              severity:
+                type: string
+                enum: ["Critical", "High", "Medium", "Low"]
+              description:
+                type: string
+              mitigation:
+                type: string
+        unresolved_questions:
+          type: array
+          description: 掃描過程中遇到的問題或無法完成掃描的原因
+          items:
+            type: object
+            required:
+              - question
+              - responsible_team
+            properties:
+              question:
+                type: string
+              responsible_team:
+                type: string
+        quality_score:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: 依據 Critical/High/Medium 漏洞數量計算的安全分數，Gate 閘門判斷依據
+    error_handler:
+      retry_strategy: 1
+      max_retry_count: 3
+      fallback_action: mark_human_review
+      retry_prompt: "你的輸出JSON不符合schema，請重新產出嚴格符合schema的純JSON，不要任何額外文字、Markdown與註解"

@@ -41,22 +41,28 @@ spec:
       ## 強制輸出規則
       1. 僅回傳單一純JSON
       2. 嚴格遵守Artifact結構
+      3. quality_score 評分規則（0~100數值，供Gate閘門使用）**必須遵守**：
+         - 0 分：完全空白，無任何有效輸出
+         - 1~39：少量內容，核心資訊大量缺失，無法進入下一階段
+         - 40~69：內容存在，但關鍵資訊不足，Gate攔截人工審查
+         - 70~84：核心內容完整，少量次要缺點，可放行
+         - 85~100：產物完備，包含風險、邊界、例外場景考量
+         - 必須在artifact中新增 `score_rationale` 欄位，說明評分理由與扣分項目.
       ## 輸出Artifact結構
       {
         "business_goal": string,
         "functional_requirements": [{"id":string,"description":string,"priority":"Must|Should|Could|Won't"}],
         "non_functional_requirements": [{"category":string,"requirement":string,"metric":string,"target_value":string}],
         "user_stories": [{"id":string,"title":string,"description":string,"acceptance_criteria":[string]}],
+        "score_rationale": string,
         "quality_score": number
       }
-      ## 驗收自檢守則:
-      - 必須包含 business_goal、functional_requirements、non_functional_requirements、user_stories
-      - quality_score 為 0~100 數字；quality_score >= 70 可通過 Stage Gate
     acceptance_criteria:
       - business_goal 與 User Input 相關聯
       - functional_requirements 包含 id、description、priority 欄位
       - non_functional_requirements 包含 category、requirement、metric、target_value 欄位
       - user_stories 包含 id、title、description、acceptance_criteria 欄位
+      - 必須包含 score_rationale 欄位
       - quality_score 為 0~100 數字；quality_score >= 70 可通過 Stage Gate
     output_schema:
       type: object
@@ -112,6 +118,8 @@ spec:
                     type: array
                     items:
                       type: string
+            score_rationale:
+              type: string
             quality_score:
               type: number
               minimum: 0

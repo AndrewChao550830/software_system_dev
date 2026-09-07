@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "C:\Shares\Coding\Assets\00 - software_system_dev\orchestrator.py", line 1018, in <module>
+    result_arts = run_workflow_with_monitoring(run_uuid, wf, project_context, user_input)
+  File "C:\Shares\Coding\Assets\00 - software_system_dev\orchestrator.py", line 974, in run_workflow_with_monitoring
+    artifacts = run_workflow(iter_run_id, workflow, project_context, user_input)
+  File "C:\Shares\Coding\Assets\00 - software_system_dev\orchestrator.py", line 757, in run_workflow
+    return _run_stages(run_id, workflow, project_context, user_input, all_artifacts=[], start_idx=0)
+  File "C:\Shares\Coding\Assets\00 - software_system_dev\orchestrator.py", line 745, in _run_stages
+    print("\n\u2705 Workflow全部執行完成")
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'cp950' codec can't encode character '\u2705' in position 2: illegal multibyte sequence

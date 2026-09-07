@@ -5,9 +5,9 @@ metadata:
   identifier: skill_code_renderer
   description: 將程式碼實作JSON元資料轉譯為真實可執行程式碼及相關檔案
   tags:
-    - software-engineering
-    - se-workflow
-    - code-generation
+  - software-engineering
+  - se-workflow
+  - code-generation
 spec:
   version: 0.2.0
   skillDefinition:
@@ -16,260 +16,103 @@ spec:
       name: 程式碼轉譯
       description: 基於skill_se_code_implementation的JSON元資料，生成實際的程式碼檔案(.py、.sql、測試腳本、設定檔等)，遵守configuration_management規範並實作上游acceptance_criteria
       version: 0.2.0
-      depends_on: [skill_se_code_implementation] # Will be updated based on context in pipeline
+      depends_on:
+      - skill_se_code_implementation
       output_artifact_type: code_rendered
     input_schema:
       type: object
       properties:
         project_context:
           type: object
-          description: Harness全域ProjectContext，包含編碼標準與開發框架指引
         user_input:
           type: string
-          description: 特別關注的實作技術或框架假設
         previous_artifacts:
           type: array
-          description: 所有前置Stage產物，特别是skill_se_code_implementation的程式碼實作JSON
-      required: [project_context, previous_artifacts]
-    core_prompt: |
-      【Skill ID: skill_code_renderer｜職責:程式碼轉譯｜主Skill】
-      任務目標:將skill_se_code_implementation產出的程式碼實作結構JSON轉譯為真實可執行的程式碼檔案，包括原始程式碼、資料庫腳本、測試檔案、設定檔等。
-      輸入參考:skill_se_code_implementation的產出JSON、ProjectContext、實作技術或框架假設。
-      執行步驟:
-      1. 解析輸入JSON：讀取並驗證skill_se_code_implementation的完整程式碼實作結構JSON
-      2. 專案結構創建：根據project_structure中的directories和files創建相應的目錄和檔案結構
-      3. 原始程式碼生成：根據api_endpoints、data_models、business_logic生成對應的程式碼檔案
-      4. 資料庫腳本生成：根據database_migration生成可執行的SQL遷移腳本
-      5. 測試樣板生成：根據testing_framework生成基本的單元測試檔案
-      6. 設定檔生成：根據configuration_management生成環境配置檔案範本
-      7. 錯誤處理與日誌實作：根據error_handling策略在程式碼中實作統一錯誤處理與日誌
-      8. 安全合規檢查：確保產出的程式碼不含硬編碼敏感資訊（密碼、金鑰等），符合configuration_management規範
-      9. 驗收標準實作：根據接受標準(acceptance_criteria)在程式碼中實作對應的驗證邏輯或說明
-      10. 輸出渲染結果：產出已渲染的程式碼檔案清單和品質分數
-
-      ## 強制輸出規則
-      1. 僅回傳單一純JSON，禁止前言、額外解釋、markdown、```json程式碼標籤、JSON註解。
-      2. 嚴格遵守下面Artifact結構，欄名不可修改，不可隨意增減頂層欄位。
-      3. quality_score 評分規則（0~100數值，供Gate閘門使用）
-         - 90~100:所有程式碼檔案已正確生成並可執行；無硬編碼敏感資訊；完全符合接受標準
-         - 80~89:主要程式碼檔案已生成；少量次要檔案缺失；無Critical/High安全風險
-         - 70~79:核心功能程式碼已生成；可執行但可能有次要問題；滿足Gate放行門檻
-         - 0~69:程式碼生成不完整或有重大問題；存在 Critical/High 風險；Gate會攔截進入人工審批
-      4. 必須說明所使用的程式語言與框架版本
-      5. 必須說明遵循的編碼標準與命名慣例
-      6. 必須驗證生成的程式碼不含硬編碼的敏感資訊（密碼、API金鑰、證書等）
-      7. 必須確認生成的檔案路徑與專案結構匹配
-      8. 必須說明是否已實作所有接受標準中的可程式化項目
-      9. risk_list存放所有安全漏洞，欄位固定：vuln_id, severity, description；無漏洞回傳空陣列[]
-      10. acceptance_criteria不可省略，無驗收項目時回傳空陣列[]
-
-      ## 輸出Artifact結構
-      {
-        "rendered_files": [
-          {
-            "file_path": string,
-            "file_type": string, // e.g., "python_source", "sql_script", "test_file", "config_file"
-            "language": string, // e.g., "python", "sql", "yaml", "json"
-            "content": string, // 實際檔案內容
-            "size_bytes": number
-          }
-        ],
-        "project_structure": {
-          "directories": [string],
-          "files": [string]
-        },
-        "technology_stack": {
-          "language": string,
-          "framework": string,
-          "version": string
-        },
-        "rendering_summary": {
-          "total_files": number,
-          "total_lines": number,
-          "languages_used": [string],
-          "frameworks_used": [string]
-        },
-        "risk_list": [
-          {
-            "vuln_id": string,
-            "severity": string,
-            "description": string
-          }
-        ],
-        "acceptance_criteria": [
-          {
-            "criteria_id": string,
-            "title": string,
-            "description": string,
-            "related_vuln": [string],
-            "check_method": string,
-            "pass_condition": string
-          }
-        ],
-        "quality_score": number
-      }
-
-      驗收自檢守則:
-      - 必須說明所使用的程式語言與框架版本
-      - 必須說明遵循的編碼標準與命名慣例
-      - 必須驗證生成的程式碼不含硬編碼的敏感資訊
-      - 必須確認生成的檔案路徑與專案結構匹配
-      - 必須說明是否已實作所有接受標準中的可程式化項目
-      - quality_score為0~100數字；quality_score >= 70 且 未有Critical/High安全風險時才可通過Stage Gate
+      required:
+      - project_context
+      - previous_artifacts
+    core_prompt: "【Skill ID: skill_code_renderer｜職責:程式碼轉譯｜主Skill】\n任務目標:將skill_se_code_implementation產出的程式碼實作結構JSON轉譯為真實可執行的程式碼檔案，包括原始程式碼、資料庫腳本、測試檔案、設定檔等。\n\
+      輸入參考:skill_se_code_implementation的產出JSON、ProjectContext、實作技術或框架假設。\n執行步驟:\n1. 解析輸入JSON：讀取並驗證skill_se_code_implementation的完整程式碼實作結構JSON\n\
+      2. 專案結構創建：根據project_structure中的directories和files創建相應的目錄和檔案結構\n3. 原始程式碼生成：根據api_endpoints、data_models、business_logic生成對應的程式碼檔案\n\
+      4. 資料庫腳本生成：根據database_migration生成可執行的SQL遷移腳本\n5. 測試樣板生成：根據testing_framework生成基本的單元測試檔案\n6. 設定檔生成：根據configuration_management生成環境配置檔案範本\n\
+      7. 錯誤處理與日誌實作：根據error_handling策略在程式碼中實作統一錯誤處理與日誌\n8. 安全合規檢查：確保產出的程式碼不含硬編碼敏感資訊（密碼、金鑰等），符合configuration_management規範\n\
+      9. 驗收標準實作：根據接受標準(acceptance_criteria)在程式碼中實作對應的驗證邏輯或說明\n10. 輸出渲染结果：產出已渲渲的程式碼檔案清單和品質分數\n## 強制輸出規則\n1. 僅回傳單一純JSON，禁止前言、額外解釋、markdown、```json程式碼標籤、JSON註解。\n\
+      2. 嚴守下面Artifact結構，欄名不可修改，不可隨意增減頂層欄位.\n3. quality_score 評分規則（0~100數值，供Gate閘門使用）**必須遵守**：\n   - 0 分：完全空白，無任何渲染程式碼\n  \
+      \ - 1~39：有少量程式碼，渲染輸出大量缺失，無法交付\n   - 40~69：程式碼可渲染，但有缺失/格式問題，Gate攔截人工審查\n   - 70~84：程式碼渲染完整，少量次要瑕疵，可放行\n   - 85~100：渲染產物完整、結構清晰、符合全部需求與規範\n\
+      \   - 必須在artifact中新增 `score_rationale` 欄位，說明評分理由與扣分項目，同時帶入my-code-standard前置檢查摘要.\n## 輸出Artifact結構\n{\n  \"rendered_files\"\
+      :\n    type: array\n    items:\n      type: object\n      required: [file_path, file_type, language, content, size_bytes]\n\
+      \      properties:\n        file_path:\n          type: string\n          description: 檔案的相對路徑（從專案根目錄開始）\n        file_type:\n\
+      \          type: string\n          description: 檔案類型，如python_source, sql_script, test_file, config_file等\n        language:\n\
+      \          type: string\n          description: 程式語言，如python, sql, yaml, json等\n        content:\n          type: string\n\
+      \          description: 檔案的實際內容\n        size_bytes:\n          type: integer\n          description: 檔案大小（位元組）\n  \"\
+      project_structure\":\n    type: object\n    properties:\n      directories:\n        type: array\n        items:\n \
+      \         type: string\n      files:\n        type: array\n        items:\n          type: string\n  \"technology_stack\"\
+      :\n    type: object\n    properties:\n      language:\n        type: string\n      framework:\n        type: string\n\
+      \      version:\n        type: string\n  \"rendering_summary\":\n    type: object\n    properties:\n      total_files:\n\
+      \        type: integer\n      total_lines:\n        type: integer\n      languages_used:\n        type: array\n    \
+      \    items:\n          type: string\n      frameworks_used:\n        type: array\n        items:\n          type: string\n\
+      \  \"risk_list\":\n    type: array\n    items:\n      type: object\n      required: [vuln_id, severity, description]\n\
+      \      properties:\n        vuln_id:\n          type: string\n        severity:\n          type: string\n        description:\n\
+      \          type: string\n  \"acceptance_criteria\":\n    type: array\n    items:\n      type: object\n      required:\n\
+      \        [\n          criteria_id,\n          title,\n          description,\n          related_vuln,\n          check_method,\n\
+      \          pass_condition,\n        ]\n      properties:\n        criteria_id:\n          type: string\n        title:\n\
+      \          type: string\n        description:\n          type: string\n        related_vuln:\n          type: array\n\
+      \          items:\n            type: string\n        check_method:\n          type: string\n        pass_condition:\n\
+      \          type: string\n  \"score_rationale\":\n    type: string\n}\n"
+    required:
+    - rendered_files
+    - project_structure
+    - technology_stack
+    - rendering_summary
+    - risk_list
+    - acceptance_criteria
+    - score_rationale
+    quality_score:
+      type: number
+      minimum: 0
+      maximum: 100
+      description: 程式碼轉譯完整度分數，Gate閘門判斷依據
+    acceptance_criteria:
+    - 必須說明所使用的程式語言與框架版本
+    - 必須說明遵循的編碼標準與命名慣例
+    - 必須驗證生成的程式碼不含硬編碼的敏感資訊
+    - 必須確認生成的檔案路徑與專案結構匹配
+    - 必須說明是否已實作所有接受標準中的可程式化項目
+    - 必須包含 score_rationale 欄位
+    - quality_score為0~100數字；quality_score >= 70 且 未有Critical/High安全風險時才可通過Stage Gate
+    gate:
+      gate_name: code_renderer_quality_gate
+      threshold_settings:
+        quality_score_min: 70.0
+      validation_rules:
+      - quality_score >= 70.0
+      failure_handling:
+        action: pause_workflow
+    error_handler:
+      retry_strategy: 1
+      max_retry_count: 3
+      fallback_action: mark_human_review
+      retry_prompt: 你的輸出JSON不符合schema，請重新產出嚴格符合schema的純JSON，不要任何額外文字、Markdown與註解
     output_schema:
       type: object
       required:
-        - artifact
-        - quality_score
+      - artifact
+      - quality_score
+      - unresolved_questions
+      - risk_list
       properties:
         artifact:
           type: object
-          properties:
-            rendered_files:
-              type: array
-              items:
-                type: object
-                required: [file_path, file_type, language, content, size_bytes]
-                properties:
-                  file_path:
-                    type: string
-                    description: 檔案的相對路徑（從專案根目錄開始）
-                  file_type:
-                    type: string
-                    description: 檔案類型，如python_source, sql_script, test_file, config_file等
-                  language:
-                    type: string
-                    description: 程式語言，如python, sql, yaml, json等
-                  content:
-                    type: string
-                    description: 檔案的實際內容
-                  size_bytes:
-                    type: integer
-                    description: 檔案大小（位元組）
-            project_structure:
-              type: object
-              properties:
-                directories:
-                  type: array
-                  items:
-                    type: string
-                files:
-                  type: array
-                  items:
-                    type: string
-            technology_stack:
-              type: object
-              properties:
-                language:
-                  type: string
-                framework:
-                  type: string
-                version:
-                  type: string
-            rendering_summary:
-              type: object
-              properties:
-                total_files:
-                  type: integer
-                total_lines:
-                  type: integer
-                languages_used:
-                  type: array
-                  items:
-                    type: string
-                frameworks_used:
-                  type: array
-                  items:
-                    type: string
-            risk_list:
-              type: array
-              items:
-                type: object
-                required: [vuln_id, severity, description]
-                properties:
-                  vuln_id:
-                    type: string
-                  severity:
-                    type: string
-                  description:
-                    type: string
-            acceptance_criteria:
-              type: array
-              items:
-                type: object
-                required:
-                  [
-                    criteria_id,
-                    title,
-                    description,
-                    related_vuln,
-                    check_method,
-                    pass_condition,
-                  ]
-                properties:
-                  criteria_id:
-                    type: string
-                  title:
-                    type: string
-                  description:
-                    type: string
-                  related_vuln:
-                    type: array
-                    items:
-                      type: string
-                  check_method:
-                    type: string
-                  pass_condition:
-                    type: string
-          required:
-            - rendered_files
-            - project_structure
-            - technology_stack
-            - rendering_summary
-            - risk_list
-            - acceptance_criteria
+          additionalProperties: true
         quality_score:
           type: number
-          minimum: 0
-          maximum: 100
-          description: 程式碼轉譯完整度分數，Gate閘門判斷依據
-    acceptance_criteria:
-      - 必須說明所使用的程式語言與框架版本
-      - 必須說明遵循的編碼標準與命名慣例
-      - 必須驗證生成的程式碼不含硬編碼的敏感資訊
-      - 必須確認生成的檔案路徑與專案結構匹配
-      - 必須說明是否已實作所有接受標準中的可程式化項目
-      - quality_score為0~100數字；quality_score >= 70 且 未有Critical/High安全風險時才可通過Stage Gate
-    # ========= Gate 安全閘門定義（整合安全合規檢查） =========
-    gate:
-      gate_name: code_rendering_security_gate
-      gate_type: security_and_quality_audit
-      description: Code Rendering Stage 安全與品質閘門，檢查生成程式碼的安全性與完整性
-      validation_rules:
-        - criteria_id: AC-RENDER-001
-          title: 無硬編碼敏感資訊檢查
-          description: >
-            生成的程式碼不可包含硬編碼的密碼、API金鑰、證書或其他敏感資訊。
-            所有敏感資訊必須透過環境變數或安全金鑰管理系統存取。
-          related_vuln:
-            - VULN-001
-          check_method: 靜態程式碼分析(SAST)掃描 + 正則表達式匹配常見敏感模式
-          pass_condition: 程式碼中不存在硬編碼的敏感資訊模式
-        - criteria_id: AC-RENDER-002
-          title: 檔案完整性驗證
-          description: >
-            所有規劃生成的程式碼檔案都應該實際生成且內容不為空。
-            重要的原始程式碼和設定檔必須存在。
-          check_method: 檔案系統檢查 + 內容長度驗證
-          pass_condition: 90%以上規劃的檔案已生成且核心檔案內容有效
-      failure_handling:
-        action: pause_workflow
-        output_artifact_key: acceptance_criteria
-        message_template: >
-          程式碼渲染階段發現問題，請檢查以下驗收標準失敗項目。
-          問題清單：{{acceptance_criteria}}，請修正渲邏輯後重跑Stage。
-      error_handler:
-        retry_strategy: 1
-        max_retry_count: 3
-        fallback_action: mark_human_review
-        retry_prompt: "你的輸出JSON不符合schema，請重新產出嚴格符合schema的純JSON，不要任何額外文字、Markdown與註解"
+          description: 0~100 的品質分數，Gate閘門判斷依據，必須>=70
+        unresolved_questions:
+          type: array
+          items:
+            type: string
+        risk_list:
+          type: array
+          items:
+            type: object
+            additionalProperties: true

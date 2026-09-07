@@ -9,6 +9,7 @@ version: 0.1.0
 cross_cutting_skills:
   - skill_id: skill_se_cost_control
   - skill_id: skill_se_sec_compliance
+  - skill_id: skill_dep_security
 
 # Gate rules, verified after each stage ends
 gate:

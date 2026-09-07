@@ -15,24 +15,21 @@ spec:
       name: 資料與狀態設計
       description: 基於所有前置Artifact，設計實體關係圖(ERD)、定義資料流程與建立狀態機模型；輸出資料與狀態設計供後續Stage使用
       version: 0.2.0
-      depends_on: [skill_se_tech_design]  # This will be updated based on context in pipeline
+      depends_on: [skill_se_tech_design]
       output_artifact_type: data_state_design
     input_schema:
       type: object
       properties:
         project_context:
           type: object
-          description: Harness全域ProjectContext，包含資料治理政策與現有資產清單
         user_input:
           type: string
-          description: 特別關注的資料模型或狀態行為假設
         previous_artifacts:
           type: array
-          description: 所有前置Stage產物，特别是技術設計產物
       required: [project_context]
     core_prompt: |
       【Skill ID: skill_se_data_state_design｜職責:資料與狀態設計｜主Skill】
-      任務目標:基於所有前置Artifact，設計實體關係圖(ERD)、定義資料流程與建立狀態機模型；輸出完整資料與狀態設計結構JSON。
+      任務目標:基於所有前置Artifact，設計實體關係圖(ERD)、定義資料流程與建立狀態機模型；輸出完整資料與狀態 설계結構JSON。
       輸入參考:所有前置Artifact、ProjectContext、資料模型或狀態行為特別假設。
       執行步驟:
       1. 實體關係圖設計：根據業務需求與資料完整性需求，設計概念邏輯實體關係圖。
@@ -42,22 +39,17 @@ spec:
       5. 資料品質管理：設計資料驗證規則、清理流程與品質監控指標。
       6. 狀態持久化策略：選擇適當的狀態存儲方式與序列化策略。
       7. 時序資料處理：根據業務需求，設計時序資料的存儲與 aggregations。
-      8. 輸出完整資料與狀態設計結構JSON。
-
+      8. 輸出完整資料與狀態設計結構JSON.
       ## 強制輸出規則
       1. 僅回傳單一純JSON，禁止前言、額外解釋、markdown、```json程式碼標籤、JSON註解。
       2. 嚴格遵守下面Artifact結構，欄名不可修改，不可隨意增減頂層欄位。
-      3. quality_score 評分規則（0~100數值，供Gate閘門使用）
-         - 80~100:ERD圖正確完整；資料流程有明確依據；狀態機覆蓋所有行為；資料標準有明確說明；無Critical/High風險
-         - 70~79:主要ERD元素已設計；資料流程有主要路徑說明；狀態機有主要狀態定義；資料標準有主要規範；識別主要資料風險；少量Medium/Low風險；滿足Gate放行門檻
-         - 60~69:ERD設計存在依據但缺少次要實體；資料流程有主要方向但缺少詳細說明；狀態機定義存在但缺少狀態轉換詳細說明；存在High風險但有緩解方案；無Critical阻斷項
-         - 0~59:ERD缺失或關聯錯誤；資料流程缺失；狀態機缺失；資料標準缺失；存在Critical/High資料風險無緩解方案；Gate會攔截進入人工審批
-      4. 實體關係圖設計必須說明設計 methodologies 與正則化規則。
-      5. 資料流程建模必須說明使用圖種類與圖元符號說明。
-      6. 狀態機模型必須說明狀態與事件的定義方式。
-      7. 資料標準與規範必須說明命名慣例、資料類型標準與欄位長度規範。
-      8. 資料品質管理必須說明驗證規則類型與品質監控指標選擇方式。
-
+      3. quality_score 評分規則（0~100數值，供Gate閘門使用）**必須遵守**：
+         - 0 分：完全空白，無任何有效輸出
+         - 1~39：少量內容，核心資訊大量缺失，無法進入下一階段
+         - 40~69：內容存在，但關鍵資訊不足，Gate攔截人工審查
+         - 70~84：核心內容完整，少量次要缺點，可放行
+         - 85~100：產物完備，包含風險、邊界、例外場景考量
+         - 必須在artifact中新增 `score_rationale` 欄位，說明評分理由與扣分項目.
       ## 輸出Artifact結構
       {
         "entity_relationship_diagram": {"entities":[string],"relationships":[string]},
@@ -67,10 +59,10 @@ spec:
         "data_quality_control": {"validation_rules":[string],"cleaning_processes":[string]},
         "persistence_strategy": {"storage_type":string,"serialization":string},
         "time_series_handling": {"storage":string,"aggregations":[string]},
-        "quality_score": number
+        "quality_score": number,
+        "score_rationale": string
       }
-
-      驗收自檢守則:
+    acceptance_criteria:
       - 實體關係圖設計必須說明設計 methodologies 與正則化規則
       - 資料流程建模必須說明使用圖種類與圖元符號說明
       - 狀態機模型必須說明狀態與事件的定義方式
@@ -78,6 +70,7 @@ spec:
       - 資料品質管理必須說明驗證規則類型與品質監控指標選擇方式
       - 狀態持久化策略必須說明適當的狀態存儲方式與序列化策略
       - 時序資料處理必須說明時序資料的存儲與 aggregations
+      - 必須包含 score_rationale 欄位
       - quality_score為0~100數字；quality_score >= 70 且 未有Critical/High資料與狀態風險無緩解方案時才可通過Stage Gate
     output_schema:
       type: object
@@ -170,6 +163,8 @@ spec:
               minimum: 0
               maximum: 100
               description: 資料與狀態設計完整度分數，Gate閘門判斷依據
+            score_rationale:
+              type: string
     acceptance_criteria:
       - 實體關係圖設計必須說明設計 methodologies 與正則化規則
       - 資料流程建模必須說明使用圖種類與圖元符號說明
@@ -178,6 +173,7 @@ spec:
       - 資料品質管理必須說明驗證規則類型與品質監控指標選擇方式
       - 狀態持久化策略必須說明適當的狀態存儲方式與序列化策略
       - 時序資料處理必須說明時序資料的存儲與 aggregations
+      - 必須包含 score_rationale 欄位
       - quality_score為0~100數字；quality_score >= 70 且 未有Critical/High資料與狀態風險無緩解方案時才可通過Stage Gate
     error_handler:
       retry_strategy: 1

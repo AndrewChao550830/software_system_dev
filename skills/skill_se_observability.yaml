@@ -13,7 +13,7 @@ spec:
     meta:
       id: skill_se_observability
       name: 可觀測性設計
-      description: 基於程式實作與架構設計Artifact，制定監控指標策略、設計日誌管理方案、規劃異常檢測機制與分散式追蹤，提供可視化儀表板方案；輸出observability供後續Stage與Gate閘門判斷
+      description: 基於程式實作與架構設計Artifact，制定監控指標策略、設計日誌管理方案、規劃異常檢測機制與分散式追蹤，提供可視化儀表板方案；輸出可觀測性供後續Stage與Gate閘門判斷
       version: 0.2.0
       depends_on: [skill_se_tech_design, skill_se_deployment]
       output_artifact_type: observability_design
@@ -22,42 +22,32 @@ spec:
       properties:
         project_context:
           type: object
-          description: Harness全域ProjectContext，包含監控政策、日誌保留、警報政策與合規要求
         user_input:
           type: string
-          description: 可觀測性需求補充、效能基準線、異常類型與追蹤深度需求
         previous_artifacts:
           type: array
-          description: 前置Stage產物，包含technical_design和deployment_plan
       required: [project_context, previous_artifacts]
     core_prompt: |
       【Skill ID: skill_se_observability｜職責:可觀測性設計｜主Skill】
-      任務目標:基於程式實作與架構設計Artifact，制定監控指標策略、設計日誌管理方案、規劃異常檢測機制與分散式追蹤，提供可視化儀表板方案；輸出完整可觀測性設計結構JSON。
-
-      輸入參考:程式實作Artifact、技術設計Artifact、ProjectContext、可觀測性需求補充。
-
+      任務目標:基於程式實作與架構設計Artifact，制定監控指標策略、設計日誌管理方案、規劃異常檢測機制與分散式追蹤，提供可視化儀表板方案；輸出完整可觀測性設計結構JSON.
+      輸入參考:程式實作Artifact、技術設計Artifact、ProjectContext、可觀測性需求補充.
       執行步驟:
       1. 監控指標設計：根據服務等級目標(SLO)，設計關鍵效能指標(KPI)、資源使用率指標與業務指標。
       2. 日誌管理策略：設計日誌採集、儲存、索引與保留政策，結合結構化日誌與關聯ID。
       3. 異常檢測與追蹤：設計閾值警報、異常行為偵測與分散式追蹤實作。
       4. 可視化儀表板方案：針對不同角色設計監控儀表板，包含實時視圖與歷史趨勢分析。
       5. 整合非功能需求：可觀測性安全性、資料隱私保護與警報噪音控制納入設計方案。
-      6. 輸出完整risk_list，分級Critical|High|Medium|Low，每筆風險包含描述、影響、緩解方案。
-
+      6. 輸出完整risk_list，分級Critical|High|Medium|Low，每筆風險包含描述、影響、緩解方案.
       ## 強制輸出規則
       1. 僅回傳單一純JSON，禁止前言、額外解釋、markdown、```json程式碼標籤、JSON註解。
       2. 嚴格遵守下面Artifact結構，欄名不可修改，不可隨意增減頂層欄位。
-      3. quality_score 評分規則（0~100數值，供Gate閘門使用）
-         - 80~100:監控指標完整覆盖SLO；日誌管理策略具體可執行；異常檢測機制設計完備；儀表板方案役別適切；無Critical/High風險
-         - 70~79:主要監控指標已設計；日誌收集有主要機制；異常檢測有基本實作方案；儀表板有主要角色覆蓋；識別主要可觀測性風險；少量Medium/Low風險；滿足Gate放行門檻
-         - 60~69:監控指標有主要方向但缺少次要指標；日誌管理存在處理缺口；異常檢測缺少關鍵決策；儀表板設計不完整；存在High風險但有緩解方案；無Critical阻斷項
-         - 0~59:監控指標設計不符合SLO；日誌管理策略缺失；異常檢測機制不完整；儀表板方案缺失；存在Critical/High可觀測性風險無緩解方案；Gate會攔截進入人工審博
-      4. 監控指標必須說明測量方法與採集頻率。
-      5. 日誌管理必須定義採集點、儲存介質與索引策略。
-      6. 異常檢測必須區分規則基礎與機器學習基礎方法。
-      7. 儀表板設計必須說明資料來源與更新頻率。
-      8. 可觀測性安全必須根據資料敏感度定義對應防護措施。
-
+      3. quality_score 評分規則（0~100數值，供Gate閘門使用）**必須遵守**：
+         - 0 分：完全空白，無任何有效輸出
+         - 1~39：少量內容，核心資訊大量缺失，無法進入下一階段
+         - 40~69：內容存在，但關鍵資訊不足，Gate攔截人工審查
+         - 70~84：核心內容完整，少量次要缺點，可放行
+         - 85~100：產物完備，包含風險、邊界、例外場景考量
+         - 必須在artifact中新增 `score_rationale` 欄位，說明評分理由與扣分項目.
       ## 輸出Artifact結構
       {
         "monitoring_indicators": [{"indicator":string,"target":string,"measurement":string,"frequency":string}],
@@ -67,29 +57,18 @@ spec:
         "visualization_dashboard": [{"role":string,"view_type":string,"data_source":string,"refresh_rate":string}],
         "non_functional_observability": [{"nf_aspect":string,"control":string,"validation":string}],
         "risk_list": [{"risk_desc":string,"level":"Critical|High|Medium|Low","impact":string,"mitigation":string}],
-        "quality_score": number
+        "quality_score": number,
+        "score_rationale": string
       }
-
-      驗收自檢守則:
+    acceptance_criteria:
       - 監控指標必須說明測量方法與採集頻率
-      - 日誌管理必須定義採集點、儲存介質與索引策律
+      - 日誌管理必須定義採集點、儲存介質與索引策略
       - 異常檢測必須區分規則基礎與機器學習基礎方法
       - 儀表板設計必須說明資料來源與更新頻率
       - 可觀測性安全必須說明防護措施
-
-      禁止行為:
-      - 不做硬體監測設備選型或機房環境監測
-      - 不做第三方監控服務整合或資料共享協議設計
-      - 不做效能基準更新或指標重新校準
-      - 禁止輸出JSON以外的任何文字
-    acceptance_criteria:
-      - 監控指標有測量方法與採集頻率說明
-      - 日誌管理有採集點、儲存介質與索引策略
-      - 異常檢測有規則基礎與機器學習基礎方法說明
-      - 儀表板設計有資料來源與更新頻率說明
-      - 可觀測性安全有防護措施描述
       - risk_list風險等級使用 Critical|High|Medium|Low
-      - quality_score為0~100數字；quality_score >= 70可通過Stage Gate
+      - 必須包含 score_rationale 欄位
+      - quality_score為0~100數字；quality_score >= 70 かつ 未有Critical/High可觀測性風險無緩解方案時才可通過Stage Gate
     output_schema:
       type: object
       required:
@@ -183,31 +162,11 @@ spec:
                     type: string
             risk_list:
               type: array
-              items:
-                type: object
-                required: [risk_desc, level, impact, mitigation]
-                properties:
-                  risk_desc:
-                    type: string
-                  level:
-                    type: string
-                    enum: ["Critical", "High", "Medium", "Low"]
-                  impact:
-                    type: string
-                  mitigation:
-                    type: string
+              description: 直通Gateの可觀測性設計階段風險清論，與artifact内risk_list保持一致
             quality_score:
               type: number
               minimum: 0
               maximum: 100
-        risk_list:
-          type: array
-          description: 直通Gate的可觀測性設計階段風險清單，與artifact內risk_list保持一致
-    acceptance_criteria:
-      - 監控覆蓋所有關鍵系統組件
-      - 告警規則設計合理且可操作
-      - 風險清單完整記錄所有識別風險及對應等級
-      - quality_score為0~100數字；quality_score >= 70 且 未有Critical/High可觀測性風險無緩解方案時才可通過Stage Gate
     error_handler:
       retry_strategy: 1
       max_retry_count: 3

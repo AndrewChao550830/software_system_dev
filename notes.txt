@@ -1,0 +1,170 @@
+streamlit run app.py --server.headless true --server.port 8501
+
+
+
+# 基於 Harness AI Skill + Orchestrator + Streamlit 整套架構的二次開發指南
+> 前提回顧：
+> 核心架構 = Harness AI Skill YAML 定義檔（各Stage：需求/建模/設計/程式實作/測試…） + Python Orchestrator（workflow排程、Gate調用、Artifact持久化） + Streamlit UI（視覺化Workflow、Artifact、人工審批介面）
+> 核心產物：**結構化Artifact JSON**，不是直接原始碼；加 Code Renderer 轉譯為真實腳本。
+> 二次開發分4大方向：新增Skill、修改既有Skill、擴充Orchestrator能力、擴充前端UI；另外還有擴充外部工具集成（SAST、Git、資料庫）。
+
+## 一、先劃分邊界：二次開發能改什麼、不動什麼（最小影響原則）
+### ✅ 可擴展/二次開發模組
+1. **Skill層（YAML，最常用）**：新增/修改 `aiSkill` CRD yaml，新增Stage、新增Gate驗證規則、調整core_prompt、更新input/output schema、新增驗收準則。**不需要改Python程式**
+2. **Orchestrator層（orchestrator.py）**：Workflow排程、Artifact儲存、Gate執行器、Skill調度、resume/rerun邏輯、外部工具呼叫（Git、SAST、金鑰管理）
+3. **UI層（Streamlit）**：新增面板、Artifact預覽、匯出功能、按鈕觸發轉譯、報表匯出、風險儀表板
+4. **擴充Skill（例如 code_renderer）**：新增轉譯Skill，把Artifact JSON輸出成真實程式碼、SQL、測試腳本
+
+### ⚠️ 盡量不要動的核心底層
+- Skill CRD 核心schema（`apiVersion: harness.io/v1, kind:aiSkill`），改了所有YAML全部要重寫，盡量沿用現有meta/input_schema/output_schema/gate/error_handler結構
+- Artifact 頂層資料結構（`artifact + quality_score`），一旦變更，所有Stage之間資料傳遞會全部斷掉
+
+> 開發原則：**優先改YAML，最後才改程式；優先新增Skill，不要直接修改舊Skill**（版本管理，方便回滾）
+
+# 二、二次開發完整流程（標準開發SOP）
+## Step1：需求定義，決定擴展類型
+3種常見二次開發場景：
+1. **場景A：修改既有Skill**（例如：更新skill_se_code_implementation的Gate驗證規則、新增更多安全檢查項目）
+   - 修改yaml → 版本升級（spec.version從0.2.0 → 0.2.1）
+   - 更新core_prompt / gate.validation_rules
+2. **場景B：新增一個全新Skill（推薦，低侵入）**
+   例如：`skill_code_renderer`、`skill_sast_scan`、`skill_cost_estimate`
+   - 新建獨立YAML，定義input_schema、output_schema、core_prompt、gate
+   - 在workflow定義檔更新pipeline，設定depends_on前置依賴
+3. **場景C：擴充Orchestrator / Streamlit程式能力**
+   新增工具：Artifact匯出Zip、呼叫外部SAST API、自動Commit程式碼到Git、連接PostgreSQL儲存workflow紀錄
+
+## Step2：開發 & 單元驗證（YAML優先）
+### 2.1 開發新Skill YAML範本（固定模板）
+```yaml
+apiVersion: harness.io/v1
+kind: aiSkill
+metadata:
+  name: 程式碼轉譯器
+  identifier: skill_code_renderer
+  description: 讀取code_implementation artifact，輸出真實原始碼、SQL、設定檔
+  tags:
+    - software-engineering
+    - code-generator
+spec:
+  version: 0.1.0
+  skillDefinition:
+    meta:
+      id: skill_code_renderer
+      name: 程式碼轉譯器
+      description: 接收程式實作元資料Artifact，產生可直接寫入檔案系統的原始碼套件
+      version: 0.1.0
+      depends_on: [skill_se_code_implementation]
+      output_artifact_type: code_source_package
+    input_schema:
+      type: object
+      required: [previous_artifacts]
+      properties:
+        previous_artifacts:
+          type: array
+          description: 上游code_implementation輸出的artifact
+    core_prompt: |
+      任務：讀取上游code_implementation artifact，依project_structure、api_endpoints、data_models生成完整原始碼
+      輸出固定JSON結構：[{"file_path":"string", "content":"string"}]
+    output_schema:
+      type: object
+      required: [artifact, quality_score]
+      properties:
+        artifact:
+          type: object
+          properties:
+            generated_files:
+              type: array
+              items:
+                type: object
+                required: [file_path, content]
+                properties:
+                  file_path:
+                    type: string
+                  content:
+                    type: string
+    gate:
+      gate_name: code_renderer_gate
+      gate_type: format_check
+      validation_rules: []
+    error_handler:
+      retry_strategy: 1
+      max_retry_count: 2
+      fallback_action: mark_human_review
+```
+
+### 2.2 更新Workflow Pipeline定義（workflow.yaml）
+新增Stage順序、依賴關係，這是Orchestrator讀取的管線定義
+```yaml
+workflow_id: se_full_lifecycle
+stages:
+  - identifier: skill_se_requirement
+  - identifier: skill_se_business_model
+  - identifier: skill_se_tech_design
+  - identifier: skill_se_data_state_design
+  - identifier: skill_se_code_implementation
+  - identifier: skill_code_renderer # <--新增Stage，依賴code_implementation
+    depends_on: skill_se_code_implementation
+  - identifier: skill_se_test_verification
+```
+
+## Step3：本地測試（三層測試）
+1. **Schema靜態檢查**：使用yaml + json schema驗證工具，檢查input/output schema是否合法（避免Harness調用時報schema錯）
+2. **單Skill隔離測試**：Orchestrator單獨呼叫這個Skill，餵入模擬previous_artifacts，看輸出JSON是否符合output_schema、quality_score是否正常
+3. **端到端Workflow測試**：完整跑一遍pipeline，檢查Artifact向下傳遞、Gate攔截邏輯、人工審批暫停、rerun是否正常
+4. UI驗證：打開Streamlit，確認新Stage、新Artifact在介面正確渲染、按鈕可用
+
+> 測試重點：
+> - Gate攔截是否正常觸發
+> - Artifact在Stage之間傳遞不丟失欄位
+> 任何JSON欄位遺失，會直接導致後續Stage崩潰
+
+## Step4：版本管理與部署
+1. Skill YAML全部存入Git，每一次修改升級spec.version，寫CHANGELOG
+2. 匯入方式二選一：
+   - GitOps：Orchestrator自動拉取Git內所有skill yaml（最推薦正式環境）
+   - 手動載入：CLI讀取本地yaml檔載入Harness Skill Registry（開發測試用）
+3. 回滾機制：發現bug，直接切回舊版本yaml
+
+# 三、二次開發方向 + 實作方式
+## 方向1：擴充Gate安全檢查（只改YAML，不用動Python）
+在code_implementation gate新增：
+- 檢查SQL注入風險
+- 檢查未加密敏感欄位
+直接在`gate.validation_rules`追加AC，core_prompt同步新增風險掃描項目。
+> 適合：新增安全規範、合規檢查、成本檢查。**最低成本開發**
+
+## 方向2：新增外部工具集成（修改orchestrator.py）
+Orchestrator作為中層，可以新增外部工具呼叫Hook：
+1. 在Skill執行前/後，呼叫外部API：SAST掃描、Git API、AWS Secret Manager、Jira、漏洞管理平台
+2. 範例流程：code_implementation完成 → orchestrator呼叫SAST工具掃描原始碼 → 把SAST結果注入risk_list，回寫Artifact
+> 實作方式：在orchestrator新增`tool_provider` class，在skill lifecycle hook（post_process）呼叫。**不改變Skill YAML結構**
+
+## 方向3：擴充Streamlit UI
+1. Artifact匯出：下載JSON / 匯出Markdown審計報告
+2. Code Renderer按鈕：點擊直接觸發轉譯，把generated_files寫到本地資料夾，下載zip
+3. 儀表板：歷史workflow風險統計、Critical漏洞數量、各Stage通过率
+4. 人工審批表單：自動填入AC、漏洞清單，支援審批備註、風險豁免登記
+
+## 方向4：新增持久化儲存（orchestrator改寫）
+預設可以把workflow/artifact存在JSON檔；二次開發可替換成PostgreSQL
+- Workflow狀態表：run_id、current_stage、status、created_at
+- Artifact表：run_id、skill_id、artifact_json、quality_score
+> 好處：長期歷史查詢、審計、多使用者同時執行Workflow
+
+# 四、開發時必須遵守的架構約束（踩坑重點）
+1. **Artifact向下相容**：新增欄位只能新增，**不能刪除既有欄位**。若舊Stage輸出欄位移除，下游全部報錯
+2. Skill之間透過`previous_artifacts`鬆耦合，Stage不要直接依賴另一個Skill內部prompt細節，只依賴輸出Artifact Schema
+3. Gate只讀取artifact內固定欄位：`risk_list`、`quality_score`、`acceptance_criteria`，Gate邏輯寫在YAML，不要寫死在Python程式
+4. LLM只負責產出結構化JSON；**業務判斷、檔案寫入、外部API呼叫全部交給orchestrator**，不要把檔案IO放到LLM prompt內
+
+# 五、推薦開發順序（建議由簡到難）
+1. 先練習：修改skill_se_code_implementation的Gate，新增1條安全驗證規則（只動yaml）
+2. 接著：新增skill_code_renderer.yaml，測試元資料轉成原始碼
+3. 接著：在Streamlit新增按鈕，觸發code render並輸出檔案
+4. 最後：擴充orchestrator，整合SAST/Secret掃描外部工具，把外部掃描結果自動寫入risk_list
+
+# 六、測試與除錯工具
+1. 本機CLI：resume_run.py，單獨執行/重跑Stage，快速驗證Gate
+2. Streamlit：即時視覺化Artifact、風險清單，人工審批模擬
+3. YAML lint + JSON Schema validator：驗證skill yaml語法與schema
